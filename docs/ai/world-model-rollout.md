@@ -8,6 +8,7 @@ Required local or deployment environment:
 
 ```env
 WORLDMODEL_DATABASE_URL="postgresql://postgres:postgres@localhost:5433/worldmodel?schema=public"
+WORLDMODEL_ACCESS_MODE="standalone"
 WORLDMODEL_PROXY_SECRET="replace-with-a-long-random-secret"
 WORLDMODEL_PUBLIC_BASE_PATH="/admin/world-model"
 LLM_PROVIDER="deepseek"
@@ -17,7 +18,7 @@ LLM_MODEL="deepseek-chat"
 MODEL_ARTIFACT_DIR="./model-artifacts"
 ```
 
-`myWeb` must use the same proxy secret:
+For `myWeb` proxy hosting, set `WORLDMODEL_ACCESS_MODE="proxy"` in `worldModel` and use the same proxy secret in both apps:
 
 ```env
 WORLDMODEL_BASE_URL="http://127.0.0.1:3100"
@@ -37,12 +38,20 @@ The world-model schema is independent from `myWeb`; no world-model tables are ad
 
 ## Access Path
 
-Direct unsigned requests to `worldModel` return `401`. The intended access path is:
+In proxy mode, direct unsigned requests to `worldModel` return `401`. The intended access path is:
 
 1. Admin opens `myWeb` `/admin/world-model`.
 2. `myWeb` runs `requireAdmin()`.
 3. `myWeb` proxies the request to `worldModel` with timestamp, body hash, and HMAC signature headers.
 4. `worldModel` validates the internal signature before serving pages or APIs.
+
+For a host that does not run `myWeb`, use standalone mode:
+
+```env
+WORLDMODEL_ACCESS_MODE="standalone"
+```
+
+Then `worldModel` can be opened directly at `http://localhost:3100/admin/world-model`.
 
 ## Verification Commands
 

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { shouldBypassProxyAuth } from "@/server/access-mode";
 
 const headerNames = {
   timestamp: "x-worldmodel-timestamp",
@@ -45,6 +46,10 @@ async function verifyRequest(request: NextRequest) {
 }
 
 export async function middleware(request: NextRequest) {
+  if (shouldBypassProxyAuth()) {
+    return NextResponse.next();
+  }
+
   if (request.nextUrl.pathname.startsWith("/api")) {
     return NextResponse.next();
   }

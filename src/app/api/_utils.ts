@@ -1,4 +1,5 @@
 import { ZodError } from "zod";
+import { shouldBypassProxyAuth } from "@/server/access-mode";
 import { createBodyHash, getProxySecret, pathWithSearch, verifyProxySignature } from "@/server/proxy-auth";
 
 export class HttpError extends Error {
@@ -35,6 +36,8 @@ export async function readJson<T>(request: Request): Promise<T> {
 }
 
 export function verifyApiRequest(request: Request, body = "") {
+  if (shouldBypassProxyAuth()) return;
+
   const result = verifyProxySignature({
     secret: getProxySecret(),
     method: request.method,
