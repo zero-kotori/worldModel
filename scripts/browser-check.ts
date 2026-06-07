@@ -1,8 +1,10 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "@playwright/test";
+import { createBodyHash, createProxySignature, proxyHeaderNames } from "../src/server/proxy-auth";
 
 const baseUrl = process.env.WORLDMODEL_CHECK_BASE_URL ?? "http://127.0.0.1:3100";
+const proxySecret = process.env.WORLDMODEL_PROXY_SECRET ?? "browser-check-secret-32-characters";
 const pages = [
   { path: "/admin/world-model", text: "最近更新" },
   { path: "/admin/world-model/beliefs", text: "创建信念" },
@@ -17,7 +19,23 @@ const viewports = [
 ];
 
 async function checkPage(browser: Browser, route: (typeof pages)[number], viewport: (typeof viewports)[number]) {
-  const page: Page = await browser.newPage({ viewport });
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const bodyHash = createBodyHash("");
+  const signature = createProxySignature({
+    secret: proxySecret,
+    method: "GET",
+    path: route.path,
+    timestamp,
+    bodyHash
+  });
+  const page: Page = await browser.newPage({
+    viewport,
+    extraHTTPHeaders: {
+      [proxyHeaderNames.timestamp]: timestamp,
+      [proxyHeaderNames.bodyHash]: bodyHash,
+      [proxyHeaderNames.signature]: signature
+    }
+  });
   const url = new URL(route.path, baseUrl).toString();
   await page.goto(url, { waitUntil: "networkidle" });
   const bodyText = await page.locator("body").innerText();

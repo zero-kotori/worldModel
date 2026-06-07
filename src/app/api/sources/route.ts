@@ -1,9 +1,10 @@
 import { getWorldModelServices } from "@/server/services";
-import { jsonError, jsonOk, readJson } from "@/app/api/_utils";
+import { jsonError, jsonOk, readJson, verifyApiRequest } from "@/app/api/_utils";
 import type { CreateSourceInput } from "@/server/services/types";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    verifyApiRequest(request);
     const services = getWorldModelServices();
     return jsonOk(await services.sources.listSources());
   } catch (error) {
