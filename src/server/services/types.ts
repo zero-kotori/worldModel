@@ -1,0 +1,264 @@
+import type { EstimatorOutput } from "@/domain/likelihood";
+import type { ProbabilityMode, ProbabilitySnapshot, UpdatePreview } from "@/domain/updates";
+
+export type BeliefCategory = "AI_TREND" | "INVESTMENT" | "TECH_TREND" | "CAREER" | "SOURCE_RELIABILITY";
+export type BeliefStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
+export type HypothesisStatus = "ACTIVE" | "PAUSED" | "RESOLVED_TRUE" | "RESOLVED_FALSE" | "ARCHIVED";
+export type ObservationSourceKind =
+  | "MANUAL"
+  | "RSS"
+  | "WEB_PAGE"
+  | "SEARCH"
+  | "GITHUB"
+  | "HUGGING_FACE"
+  | "GDELT"
+  | "PREDICTION_MARKET"
+  | "SOCIAL";
+export type ObservationStatus = "PENDING" | "DUPLICATE" | "UNKNOWN" | "CONFIRMED" | "REJECTED";
+export type EvidenceConfirmationMode = "MANUAL" | "AUTO";
+export type EvidenceStatus = "ACTIVE" | "SUPERSEDED" | "REJECTED";
+export type EvidenceDirection = "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL";
+export type ObservationRunStatus = "SUCCESS" | "FAILED" | "DRY_RUN";
+export type ModelArtifactKind = "LIGHTWEIGHT" | "LLM" | "DEEP_ADAPTER";
+
+export type HypothesisRecord = {
+  id: string;
+  beliefId: string;
+  proposition: string;
+  notes: string;
+  priorProbability: number;
+  currentProbability: number;
+  strength: number;
+  status: HypothesisStatus;
+  startsAt?: Date;
+  expiresAt?: Date;
+  expiryCondition?: string;
+  resolvedOutcome?: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type BeliefRecord = {
+  id: string;
+  title: string;
+  category: BeliefCategory;
+  description: string;
+  probabilityMode: ProbabilityMode;
+  status: BeliefStatus;
+  hypotheses: HypothesisRecord[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ObservationSourceRecord = {
+  id: string;
+  name: string;
+  kind: ObservationSourceKind;
+  url?: string;
+  adapter: string;
+  credentialRef?: string;
+  credibility: number;
+  enabled: boolean;
+  autoConfirm: boolean;
+  autoConfirmThreshold: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ObservationRecord = {
+  id: string;
+  sourceId?: string;
+  title: string;
+  content: string;
+  url?: string;
+  author?: string;
+  publishedAt?: Date;
+  observedAt: Date;
+  normalizedHash?: string;
+  semanticKey?: string;
+  status: ObservationStatus;
+  duplicateOfId?: string;
+  credibility: number;
+  metadata: Record<string, unknown>;
+};
+
+export type EvidenceHypothesisLinkRecord = {
+  id: string;
+  evidenceId: string;
+  hypothesisId: string;
+  direction: EvidenceDirection;
+  relevance: number;
+  likelihoodRatio: number;
+  confidence: number;
+  rationale: string;
+  createdAt: Date;
+};
+
+export type EvidenceRecord = {
+  id: string;
+  observationId: string;
+  title: string;
+  content: string;
+  url?: string;
+  confirmedAt: Date;
+  confirmationMode: EvidenceConfirmationMode;
+  credibility: number;
+  status: EvidenceStatus;
+  metadata: Record<string, unknown>;
+  links: EvidenceHypothesisLinkRecord[];
+};
+
+export type LikelihoodRunRecord = {
+  id: string;
+  evidenceId: string;
+  hypothesisId: string;
+  ensembleLikelihoodRatio: number;
+  ensembleConfidence: number;
+  estimatorOutputs: EstimatorOutput[];
+  modelVersion: string;
+  createdAt: Date;
+};
+
+export type BayesianUpdateEventRecord = {
+  id: string;
+  beliefId: string;
+  evidenceId: string;
+  likelihoodRunId?: string;
+  priorSnapshot: ProbabilitySnapshot;
+  posteriorSnapshot: ProbabilitySnapshot;
+  mode: "APPLIED";
+  status: "APPLIED" | "ROLLED_BACK";
+  confidence: number;
+  explanations: string[];
+  createdAt: Date;
+  rolledBackAt?: Date;
+};
+
+export type ObservationRunRecord = {
+  id: string;
+  sourceId?: string;
+  status: ObservationRunStatus;
+  startedAt: Date;
+  finishedAt?: Date;
+  itemCount: number;
+  deduplicatedCount: number;
+  errorMessage?: string;
+};
+
+export type ModelArtifactRecord = {
+  id: string;
+  name: string;
+  kind: ModelArtifactKind;
+  version: string;
+  path: string;
+  metrics: Record<string, unknown>;
+  enabled: boolean;
+  createdAt: Date;
+};
+
+export type CreateHypothesisInput = {
+  proposition: string;
+  priorProbability: number;
+  notes?: string;
+  startsAt?: Date;
+  expiresAt?: Date;
+  expiryCondition?: string;
+};
+
+export type CreateBeliefInput = {
+  title: string;
+  category: BeliefCategory;
+  description: string;
+  probabilityMode: ProbabilityMode;
+  hypotheses: CreateHypothesisInput[];
+};
+
+export type CreateObservationInput = {
+  sourceId?: string;
+  title: string;
+  content: string;
+  url?: string;
+  author?: string;
+  publishedAt?: Date;
+  credibility?: number;
+  normalizedHash?: string;
+  semanticKey?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ConfirmEvidenceInput = {
+  observationId: string;
+  confirmationMode: EvidenceConfirmationMode;
+  links: Array<{
+    hypothesisId: string;
+    direction: EvidenceDirection;
+    relevance: number;
+    likelihoodRatio: number;
+    confidence: number;
+    rationale: string;
+  }>;
+};
+
+export type RunLikelihoodInput = {
+  evidenceId: string;
+  hypothesisId: string;
+  outputs: EstimatorOutput[];
+};
+
+export type CreateSourceInput = Omit<ObservationSourceRecord, "id" | "createdAt" | "updatedAt">;
+export type RawObservationInput = Pick<CreateObservationInput, "title" | "content" | "url" | "author" | "publishedAt">;
+export type ImportArtifactInput = Omit<ModelArtifactRecord, "id" | "createdAt">;
+
+export type WorldModelStore = {
+  createBelief(input: Omit<BeliefRecord, "hypotheses">, hypotheses: HypothesisRecord[]): Promise<BeliefRecord>;
+  listBeliefs(): Promise<BeliefRecord[]>;
+  getBelief(id: string): Promise<BeliefRecord | null>;
+  getHypothesis(id: string): Promise<HypothesisRecord | null>;
+  updateHypothesisProbabilities(probabilities: ProbabilitySnapshot): Promise<void>;
+  createObservation(input: ObservationRecord): Promise<ObservationRecord>;
+  listObservations(): Promise<ObservationRecord[]>;
+  getObservation(id: string): Promise<ObservationRecord | null>;
+  updateObservation(id: string, patch: Partial<ObservationRecord>): Promise<ObservationRecord>;
+  createEvidence(evidence: EvidenceRecord): Promise<EvidenceRecord>;
+  getEvidence(id: string): Promise<EvidenceRecord | null>;
+  listEvidence(): Promise<EvidenceRecord[]>;
+  createLikelihoodRun(input: LikelihoodRunRecord): Promise<LikelihoodRunRecord>;
+  createUpdateEvent(input: BayesianUpdateEventRecord): Promise<BayesianUpdateEventRecord>;
+  getUpdateEvent(id: string): Promise<BayesianUpdateEventRecord | null>;
+  updateUpdateEvent(id: string, patch: Partial<BayesianUpdateEventRecord>): Promise<BayesianUpdateEventRecord>;
+  createSource(input: ObservationSourceRecord): Promise<ObservationSourceRecord>;
+  getSource(id: string): Promise<ObservationSourceRecord | null>;
+  createObservationRun(input: ObservationRunRecord): Promise<ObservationRunRecord>;
+  createModelArtifact(input: ModelArtifactRecord): Promise<ModelArtifactRecord>;
+};
+
+export type WorldModelServices = {
+  beliefs: {
+    createBelief(input: CreateBeliefInput): Promise<BeliefRecord>;
+    listBeliefs(): Promise<BeliefRecord[]>;
+    getBelief(id: string): Promise<BeliefRecord | null>;
+  };
+  observations: {
+    createObservation(input: CreateObservationInput): Promise<ObservationRecord>;
+    listObservations(): Promise<ObservationRecord[]>;
+  };
+  evidence: {
+    confirmObservation(input: ConfirmEvidenceInput): Promise<EvidenceRecord>;
+    listEvidence(): Promise<EvidenceRecord[]>;
+  };
+  likelihood: {
+    runLikelihood(input: RunLikelihoodInput): Promise<LikelihoodRunRecord>;
+  };
+  updates: {
+    createPreview(evidenceId: string): Promise<UpdatePreview>;
+    applyPreview(preview: UpdatePreview, likelihoodRunId?: string): Promise<BayesianUpdateEventRecord>;
+    rollback(eventId: string): Promise<BayesianUpdateEventRecord & { restoredProbabilities: ProbabilitySnapshot }>;
+  };
+  sources: {
+    createSource(input: CreateSourceInput): Promise<ObservationSourceRecord>;
+    runDryRun(sourceId: string, observations: RawObservationInput[]): Promise<ObservationRunRecord>;
+  };
+  models: {
+    importArtifact(input: ImportArtifactInput): Promise<ModelArtifactRecord>;
+  };
+};

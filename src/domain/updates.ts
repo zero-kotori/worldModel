@@ -26,6 +26,7 @@ export type EvidenceLinkForUpdate = {
 export type ProbabilitySnapshot = Record<string, number>;
 
 export type UpdatePreview = {
+  evidenceId?: string;
   beliefId: string;
   mode: ProbabilityMode;
   priorSnapshot: ProbabilitySnapshot;
