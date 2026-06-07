@@ -130,6 +130,13 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
       updateEvents.push(input);
       return { ...input, createdAt: new Date(input.createdAt), rolledBackAt: cloneDate(input.rolledBackAt) };
     },
+    async listUpdateEvents() {
+      return updateEvents.map((event) => ({
+        ...event,
+        createdAt: new Date(event.createdAt),
+        rolledBackAt: cloneDate(event.rolledBackAt)
+      }));
+    },
     async getUpdateEvent(id) {
       const event = updateEvents.find((item) => item.id === id);
       return event ? { ...event, createdAt: new Date(event.createdAt), rolledBackAt: cloneDate(event.rolledBackAt) } : null;
@@ -147,6 +154,13 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
     async createSource(input) {
       sources.push(input);
       return { ...input, createdAt: new Date(input.createdAt), updatedAt: new Date(input.updatedAt) };
+    },
+    async listSources() {
+      return sources.map((source) => ({
+        ...source,
+        createdAt: new Date(source.createdAt),
+        updatedAt: new Date(source.updatedAt)
+      }));
     },
     async getSource(id) {
       const source = sources.find((item) => item.id === id);
@@ -169,6 +183,9 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
         modelArtifacts.push(record);
       }
       return { ...record, createdAt: new Date(record.createdAt) };
+    },
+    async listModelArtifacts() {
+      return modelArtifacts.map((artifact) => ({ ...artifact, createdAt: new Date(artifact.createdAt) }));
     }
   };
 }

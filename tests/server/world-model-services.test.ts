@@ -158,6 +158,7 @@ describe("world model services", () => {
 
     expect(event.status).toBe("APPLIED");
     expect(event.evidenceId).toBe(evidence.id);
+    await expect(services.updates.listEvents()).resolves.toHaveLength(1);
     expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.45);
 
     const rollback = await services.updates.rollback(event.id);
@@ -197,5 +198,7 @@ describe("world model services", () => {
     expect(run.itemCount).toBe(2);
     expect(run.deduplicatedCount).toBe(1);
     expect(artifact.enabled).toBe(true);
+    await expect(services.sources.listSources()).resolves.toHaveLength(1);
+    await expect(services.models.listArtifacts()).resolves.toHaveLength(1);
   });
 });

@@ -379,6 +379,10 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
       });
       return toUpdateEventRecord(record);
     },
+    async listUpdateEvents() {
+      const records = await prisma.bayesianUpdateEvent.findMany({ orderBy: { createdAt: "desc" } });
+      return records.map(toUpdateEventRecord);
+    },
     async getUpdateEvent(id) {
       const record = await prisma.bayesianUpdateEvent.findUnique({ where: { id } });
       return record ? toUpdateEventRecord(record) : null;
@@ -411,6 +415,10 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
         }
       });
       return toSourceRecord(record);
+    },
+    async listSources() {
+      const records = await prisma.observationSource.findMany({ orderBy: { updatedAt: "desc" } });
+      return records.map(toSourceRecord);
     },
     async getSource(id) {
       const record = await prisma.observationSource.findUnique({ where: { id } });
@@ -452,6 +460,10 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
         }
       });
       return toModelArtifactRecord(record);
+    },
+    async listModelArtifacts() {
+      const records = await prisma.modelArtifact.findMany({ orderBy: { createdAt: "desc" } });
+      return records.map(toModelArtifactRecord);
     }
   };
 }

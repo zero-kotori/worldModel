@@ -224,12 +224,15 @@ export type WorldModelStore = {
   listEvidence(): Promise<EvidenceRecord[]>;
   createLikelihoodRun(input: LikelihoodRunRecord): Promise<LikelihoodRunRecord>;
   createUpdateEvent(input: BayesianUpdateEventRecord): Promise<BayesianUpdateEventRecord>;
+  listUpdateEvents(): Promise<BayesianUpdateEventRecord[]>;
   getUpdateEvent(id: string): Promise<BayesianUpdateEventRecord | null>;
   updateUpdateEvent(id: string, patch: Partial<BayesianUpdateEventRecord>): Promise<BayesianUpdateEventRecord>;
   createSource(input: ObservationSourceRecord): Promise<ObservationSourceRecord>;
+  listSources(): Promise<ObservationSourceRecord[]>;
   getSource(id: string): Promise<ObservationSourceRecord | null>;
   createObservationRun(input: ObservationRunRecord): Promise<ObservationRunRecord>;
   createModelArtifact(input: ModelArtifactRecord): Promise<ModelArtifactRecord>;
+  listModelArtifacts(): Promise<ModelArtifactRecord[]>;
 };
 
 export type WorldModelServices = {
@@ -250,15 +253,18 @@ export type WorldModelServices = {
     runLikelihood(input: RunLikelihoodInput): Promise<LikelihoodRunRecord>;
   };
   updates: {
+    listEvents(): Promise<BayesianUpdateEventRecord[]>;
     createPreview(evidenceId: string): Promise<UpdatePreview>;
     applyPreview(preview: UpdatePreview, likelihoodRunId?: string): Promise<BayesianUpdateEventRecord>;
     rollback(eventId: string): Promise<BayesianUpdateEventRecord & { restoredProbabilities: ProbabilitySnapshot }>;
   };
   sources: {
+    listSources(): Promise<ObservationSourceRecord[]>;
     createSource(input: CreateSourceInput): Promise<ObservationSourceRecord>;
     runDryRun(sourceId: string, observations: RawObservationInput[]): Promise<ObservationRunRecord>;
   };
   models: {
+    listArtifacts(): Promise<ModelArtifactRecord[]>;
     importArtifact(input: ImportArtifactInput): Promise<ModelArtifactRecord>;
   };
 };

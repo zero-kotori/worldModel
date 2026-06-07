@@ -308,6 +308,9 @@ export function createWorldModelServices(store: WorldModelStore): WorldModelServ
       }
     },
     updates: {
+      listEvents() {
+        return store.listUpdateEvents();
+      },
       async createPreview(evidenceId: string) {
         const evidence = await store.getEvidence(evidenceId);
         if (!evidence) throw new Error(`Evidence not found: ${evidenceId}`);
@@ -358,6 +361,9 @@ export function createWorldModelServices(store: WorldModelStore): WorldModelServ
       }
     },
     sources: {
+      listSources() {
+        return store.listSources();
+      },
       async createSource(input: CreateSourceInput) {
         const parsed = sourceSchema.parse(input);
         const createdAt = now();
@@ -391,6 +397,9 @@ export function createWorldModelServices(store: WorldModelStore): WorldModelServ
       }
     },
     models: {
+      listArtifacts() {
+        return store.listModelArtifacts();
+      },
       async importArtifact(input: ImportArtifactInput) {
         const parsed = artifactSchema.parse(input);
         return store.createModelArtifact({
