@@ -1,0 +1,8 @@
+.git
+.next
+node_modules
+coverage
+dist
+.env
+.env.local
+model-artifacts

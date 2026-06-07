@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("WORLDMODEL_DATABASE_URL")
+}
+
+enum BeliefCategory {
+  AI_TREND
+  INVESTMENT
+  TECH_TREND
+  CAREER
+  SOURCE_RELIABILITY
+}
+
+enum ProbabilityMode {
+  MUTUALLY_EXCLUSIVE
+  INDEPENDENT
+}
+
+enum BeliefStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum HypothesisStatus {
+  ACTIVE
+  PAUSED
+  RESOLVED_TRUE
+  RESOLVED_FALSE
+  ARCHIVED
+}
+
+enum ObservationSourceKind {
+  MANUAL
+  RSS
+  WEB_PAGE
+  SEARCH
+  GITHUB
+  HUGGING_FACE
+  GDELT
+  PREDICTION_MARKET
+  SOCIAL
+}
+
+enum ObservationStatus {
+  PENDING
+  DUPLICATE
+  UNKNOWN
+  CONFIRMED
+  REJECTED
+}
+
+enum EvidenceConfirmationMode {
+  MANUAL
+  AUTO
+}
+
+enum EvidenceStatus {
+  ACTIVE
+  SUPERSEDED
+  REJECTED
+}
+
+enum EvidenceDirection {
+  SUPPORTS
+  OPPOSES
+  MIXED
+  NEUTRAL
+}
+
+enum UpdateMode {
+  PREVIEW
+  APPLIED
+  ROLLBACK
+}
+
+enum UpdateStatus {
+  APPLIED
+  ROLLED_BACK
+}
+
+enum ObservationRunStatus {
+  SUCCESS
+  FAILED
+  DRY_RUN
+}
+
+enum ModelArtifactKind {
+  LIGHTWEIGHT
+  LLM
+  DEEP_ADAPTER
+}
+
+model Belief {
+  id              String          @id @default(cuid())
+  title           String
+  category        BeliefCategory
+  description     String
+  probabilityMode ProbabilityMode
+  status          BeliefStatus    @default(ACTIVE)
+  hypotheses      Hypothesis[]
+  updateEvents    BayesianUpdateEvent[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([category, status])
+}
+
+model Hypothesis {
+  id                 String                   @id @default(cuid())
+  beliefId           String
+  belief             Belief                   @relation(fields: [beliefId], references: [id], onDelete: Cascade)
+  proposition        String
+  notes              String
+  priorProbability   Float
+  currentProbability Float
+  strength           Float
+  status             HypothesisStatus         @default(ACTIVE)
+  startsAt           DateTime?
+  expiresAt          DateTime?
+  expiryCondition    String?
+  resolvedOutcome    String?
+  evidenceLinks      EvidenceHypothesisLink[]
+  likelihoodRuns     LikelihoodRun[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@index([beliefId, status])
+}
+
+model ObservationSource {
+  id                   String                @id @default(cuid())
+  name                 String
+  kind                 ObservationSourceKind
+  url                  String?
+  adapter              String
+  credentialRef        String?
+  credibility          Float                 @default(0.5)
+  enabled              Boolean               @default(true)
+  autoConfirm          Boolean               @default(false)
+  autoConfirmThreshold Float                 @default(0.85)
+  observations         Observation[]
+  runs                 ObservationRun[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@index([kind, enabled])
+}
+
+model Observation {
+  id             String             @id @default(cuid())
+  sourceId       String?
+  source         ObservationSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  title          String
+  content        String
+  url            String?
+  author         String?
+  publishedAt    DateTime?
+  observedAt     DateTime           @default(now())
+  normalizedHash String?
+  semanticKey    String?
+  status         ObservationStatus   @default(PENDING)
+  duplicateOfId  String?
+  duplicateOf    Observation?        @relation("ObservationDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates     Observation[]       @relation("ObservationDuplicates")
+  credibility    Float               @default(0.5)
+  metadata       Json
+  evidence       Evidence?
+
+  @@index([status, observedAt])
+  @@index([url])
+  @@index([normalizedHash])
+  @@index([semanticKey])
+}
+
+model Evidence {
+  id               String                   @id @default(cuid())
+  observationId    String                   @unique
+  observation      Observation              @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  title            String
+  content          String
+  url              String?
+  confirmedAt      DateTime                 @default(now())
+  confirmationMode EvidenceConfirmationMode
+  credibility      Float                    @default(0.5)
+  status           EvidenceStatus           @default(ACTIVE)
+  metadata         Json
+  hypothesisLinks  EvidenceHypothesisLink[]
+  likelihoodRuns   LikelihoodRun[]
+  updateEvents     BayesianUpdateEvent[]
+
+  @@index([status, confirmedAt])
+}
+
+model EvidenceHypothesisLink {
+  id              String            @id @default(cuid())
+  evidenceId      String
+  evidence        Evidence          @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  hypothesisId    String
+  hypothesis      Hypothesis        @relation(fields: [hypothesisId], references: [id], onDelete: Cascade)
+  direction       EvidenceDirection
+  relevance       Float
+  likelihoodRatio Float
+  confidence      Float
+  rationale       String
+  createdAt       DateTime          @default(now())
+
+  @@unique([evidenceId, hypothesisId])
+}
+
+model LikelihoodRun {
+  id                      String                @id @default(cuid())
+  evidenceId              String
+  evidence                Evidence              @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  hypothesisId            String
+  hypothesis              Hypothesis            @relation(fields: [hypothesisId], references: [id], onDelete: Cascade)
+  ensembleLikelihoodRatio Float
+  ensembleConfidence      Float
+  estimatorOutputs        Json
+  modelVersion            String
+  updateEvents            BayesianUpdateEvent[]
+  createdAt               DateTime              @default(now())
+
+  @@index([evidenceId, hypothesisId])
+}
+
+model BayesianUpdateEvent {
+  id              String       @id @default(cuid())
+  beliefId        String
+  belief          Belief       @relation(fields: [beliefId], references: [id], onDelete: Cascade)
+  evidenceId      String
+  evidence        Evidence     @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  likelihoodRunId String?
+  likelihoodRun   LikelihoodRun? @relation(fields: [likelihoodRunId], references: [id], onDelete: SetNull)
+  priorSnapshot   Json
+  posteriorSnapshot Json
+  mode            UpdateMode
+  status          UpdateStatus @default(APPLIED)
+  createdAt       DateTime     @default(now())
+  rolledBackAt    DateTime?
+}
+
+model ObservationRun {
+  id                String               @id @default(cuid())
+  sourceId          String?
+  source            ObservationSource?   @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  status            ObservationRunStatus
+  startedAt         DateTime             @default(now())
+  finishedAt        DateTime?
+  itemCount         Int                  @default(0)
+  deduplicatedCount Int                  @default(0)
+  errorMessage      String?
+}
+
+model ModelArtifact {
+  id        String            @id @default(cuid())
+  name      String
+  kind      ModelArtifactKind
+  version   String
+  path      String
+  metrics   Json
+  enabled   Boolean           @default(false)
+  createdAt DateTime          @default(now())
+
+  @@unique([name, version])
+  @@index([kind, enabled])
+}

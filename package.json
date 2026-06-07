@@ -1,0 +1,50 @@
+{
+  "name": "world-model",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "prisma generate && next build",
+    "start": "next start -p 3100",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:dev": "prisma migrate dev",
+    "observe": "tsx scripts/observe.ts",
+    "train:prepare": "python3 scripts/train_prepare.py",
+    "train:light": "python3 scripts/train_light.py",
+    "model:import": "tsx scripts/model-import.ts",
+    "test:browser": "tsx scripts/browser-check.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.10.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^16.4.7",
+    "fast-xml-parser": "^5.2.5",
+    "lucide-react": "^0.468.0",
+    "next": "^15.3.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "server-only": "^0.0.1",
+    "zod": "^3.25.64"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "^1.53.1",
+    "@types/node": "^22.15.31",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.29.0",
+    "eslint-config-next": "^15.3.4",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.5.6",
+    "prisma": "^6.10.1",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3"
+  }
+}

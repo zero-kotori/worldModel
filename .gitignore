@@ -1,0 +1,14 @@
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.token
+node_modules
+.next
+coverage
+dist
+model-artifacts
+*.tsbuildinfo
+__pycache__
+.DS_Store
