@@ -1,8 +1,8 @@
 import { deduplicateObservation } from "@/domain/dedupe";
 import { PrismaClient } from "@prisma/client";
 import { config } from "dotenv";
+import { createConfiguredWorldModelServices } from "@/server/services/configured";
 import { createPrismaWorldModelStore } from "@/server/services/prisma-store";
-import { createWorldModelServices } from "@/server/services/world-model-services";
 import { createSourceAdapter, supportedSourceKinds, type RawObservation } from "@/server/sources/adapters";
 import type { ObservationSourceKind } from "@/server/services/types";
 
@@ -50,7 +50,7 @@ async function main() {
   if (loop || sourceId || runAllSources) {
     const prisma = new PrismaClient();
     try {
-      const services = createWorldModelServices(createPrismaWorldModelStore(prisma));
+      const services = createConfiguredWorldModelServices(createPrismaWorldModelStore(prisma));
       if (loop) {
         const result = await services.automation.runEvidenceLoop({
           reviewOnly,

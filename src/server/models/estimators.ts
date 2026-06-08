@@ -141,7 +141,7 @@ export function createLlmEstimator(config: {
 }
 
 export function createConfiguredLlmEstimator(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
   fetcher?: typeof fetch
 ) {
   const provider = env.LLM_PROVIDER === "openai" || env.LLM_PROVIDER === "local" ? env.LLM_PROVIDER : "deepseek";

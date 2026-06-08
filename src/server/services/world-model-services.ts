@@ -28,6 +28,7 @@ import type {
   EvidenceRecord,
   HypothesisRecord,
   ImportArtifactInput,
+  ObservationRunRecord,
   RawObservationInput,
   RunSourceOptions,
   RunLikelihoodInput,
@@ -687,6 +688,26 @@ export function createWorldModelServices(
     return queries;
   }
 
+  async function createObservationRunRecord(input: ObservationRunRecord) {
+    try {
+      return await store.createObservationRun(input);
+    } catch (error) {
+      if (!input.sourceId) throw error;
+      return store.createObservationRun({
+        ...input,
+        sourceId: undefined,
+        status: "FAILED",
+        finishedAt: input.finishedAt ?? now(),
+        itemCount: input.status === "FAILED" ? input.itemCount : 0,
+        deduplicatedCount: input.status === "FAILED" ? input.deduplicatedCount : 0,
+        candidateCount: input.status === "FAILED" ? input.candidateCount : 0,
+        autoAppliedCount: input.status === "FAILED" ? input.autoAppliedCount : 0,
+        reviewCount: input.status === "FAILED" ? input.reviewCount : 0,
+        errorMessage: input.errorMessage ?? (error instanceof Error ? error.message : String(error))
+      });
+    }
+  }
+
   async function runSource(sourceId: string, runOptions: RunSourceOptions = {}) {
     const source = await store.getSource(sourceId);
     if (!source) throw new Error(`Source not found: ${sourceId}`);
@@ -748,7 +769,7 @@ export function createWorldModelServices(
         autoAppliedCount += 1;
       }
 
-      return store.createObservationRun({
+      return createObservationRunRecord({
         id: createRecordId("observation_run"),
         sourceId,
         status: runOptions.reviewOnly ? "REVIEW_ONLY" : "SUCCESS",
@@ -763,7 +784,7 @@ export function createWorldModelServices(
         querySummary
       });
     } catch (error) {
-      return store.createObservationRun({
+      return createObservationRunRecord({
         id: createRecordId("observation_run"),
         sourceId,
         status: "FAILED",
@@ -957,7 +978,7 @@ export function createWorldModelServices(
           seen.push({ id: createRecordId("dry_observation"), ...toDedupeObservation(observation) });
         }
         const startedAt = now();
-        return store.createObservationRun({
+        return createObservationRunRecord({
           id: createRecordId("observation_run"),
           sourceId,
           status: "DRY_RUN",

@@ -443,6 +443,54 @@ describe("world model services", () => {
     expect(evidence).toHaveLength(0);
   });
 
+  it("records a failed run if the source disappears before the run record is saved", async () => {
+    const store = createInMemoryWorldModelStore();
+    const createObservationRun = store.createObservationRun;
+    store.createObservationRun = async (input) => {
+      if (input.sourceId) {
+        throw new Error("Foreign key constraint violated on ObservationRun_sourceId_fkey");
+      }
+      return createObservationRun(input);
+    };
+    const services = createWorldModelServices(store, {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>AI agents accelerate engineering teams</title></head><body>AI agents accelerate engineering teams by handling routine implementation work.</body></html>"
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Ephemeral source",
+      kind: "WEB_PAGE",
+      url: "https://example.com/ephemeral",
+      adapter: "web_page",
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+
+    const run = await services.sources.runSource(source.id);
+
+    expect(run.status).toBe("FAILED");
+    expect(run.sourceId).toBeUndefined();
+    expect(run.errorMessage).toContain("ObservationRun_sourceId_fkey");
+    await expect(services.sources.listRuns()).resolves.toEqual([run]);
+  });
+
   it("uses the LLM scorer as the primary likelihood source for auto-confirmed evidence", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {
