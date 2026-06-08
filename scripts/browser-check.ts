@@ -1,7 +1,11 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "@playwright/test";
+import { config } from "dotenv";
 import { createBodyHash, createProxySignature, proxyHeaderNames } from "../src/server/proxy-auth";
+
+config({ path: ".env.local" });
+config();
 
 const baseUrl = process.env.WORLDMODEL_CHECK_BASE_URL ?? "http://127.0.0.1:3100";
 const proxySecret = process.env.WORLDMODEL_PROXY_SECRET ?? "browser-check-secret-32-characters";

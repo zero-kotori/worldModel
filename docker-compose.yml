@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: worldmodel
       POSTGRES_USER: postgres
@@ -9,6 +10,29 @@ services:
       - "5433:5432"
     volumes:
       - worldmodel-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d worldmodel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env.local
+    environment:
+      WORLDMODEL_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/worldmodel?schema=public
+    ports:
+      - "172.17.0.1:3100:3100"
+    volumes:
+      - ./model-artifacts:/app/model-artifacts
+    command: sh -c "npx prisma migrate deploy && exec npm run start"
 
 volumes:
   worldmodel-postgres:

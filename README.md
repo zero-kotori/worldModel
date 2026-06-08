@@ -52,6 +52,12 @@ Use this mode when the host does not run `myWeb`.
    http://localhost:3100/admin/world-model
    ```
 
+For a Docker-managed app process instead of `npm run dev`, use:
+
+```bash
+docker compose up -d --build
+```
+
 ## myWeb Proxy Mode
 
 Use this mode when `myWeb` provides the protected admin entry.
