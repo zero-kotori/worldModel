@@ -18,6 +18,7 @@ import type {
   BayesianUpdateEventRecord,
   BeliefRecord,
   EvidenceRecord,
+  EvidenceLoopQuery,
   HypothesisRecord,
   LikelihoodRunRecord,
   ModelArtifactRecord,
@@ -46,12 +47,27 @@ function estimatorOutputs(value: Prisma.JsonValue): EstimatorOutput[] {
   return Array.isArray(value) ? (value as EstimatorOutput[]) : [];
 }
 
+function evidenceLoopQueries(value: Prisma.JsonValue | null): EvidenceLoopQuery[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is EvidenceLoopQuery => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const candidate = item as Record<string, unknown>;
+    return (
+      typeof candidate.beliefId === "string" &&
+      typeof candidate.hypothesisId === "string" &&
+      typeof candidate.category === "string" &&
+      typeof candidate.query === "string"
+    );
+  });
+}
+
 function toHypothesisRecord(record: Hypothesis): HypothesisRecord {
   return {
     id: record.id,
     beliefId: record.beliefId,
     proposition: record.proposition,
     notes: record.notes,
+    stance: record.stance,
     priorProbability: record.priorProbability,
     currentProbability: record.currentProbability,
     strength: record.strength,
@@ -180,6 +196,11 @@ function toObservationRunRecord(record: ObservationRun): ObservationRunRecord {
     finishedAt: record.finishedAt ?? undefined,
     itemCount: record.itemCount,
     deduplicatedCount: record.deduplicatedCount,
+    candidateCount: record.candidateCount,
+    autoAppliedCount: record.autoAppliedCount,
+    reviewCount: record.reviewCount,
+    queryCount: record.queryCount,
+    querySummary: evidenceLoopQueries(record.querySummary),
     errorMessage: record.errorMessage ?? undefined
   };
 }
@@ -215,6 +236,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
               id: hypothesis.id,
               proposition: hypothesis.proposition,
               notes: hypothesis.notes,
+              stance: hypothesis.stance,
               priorProbability: hypothesis.priorProbability,
               currentProbability: hypothesis.currentProbability,
               strength: hypothesis.strength,
@@ -230,6 +252,75 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
         include: { hypotheses: true }
       });
       return toBeliefRecord(record);
+    },
+    async updateBelief(id, patch) {
+      const record = await prisma.belief.update({
+        where: { id },
+        data: {
+          title: patch.title,
+          category: patch.category,
+          description: patch.description,
+          probabilityMode: patch.probabilityMode,
+          status: patch.status,
+          updatedAt: patch.updatedAt
+        },
+        include: { hypotheses: true }
+      });
+      return toBeliefRecord(record);
+    },
+    async createHypothesis(input) {
+      const record = await prisma.hypothesis.create({
+        data: {
+          id: input.id,
+          beliefId: input.beliefId,
+          proposition: input.proposition,
+          notes: input.notes,
+          stance: input.stance,
+          priorProbability: input.priorProbability,
+          currentProbability: input.currentProbability,
+          strength: input.strength,
+          status: input.status,
+          startsAt: input.startsAt,
+          expiresAt: input.expiresAt,
+          expiryCondition: input.expiryCondition,
+          createdAt: input.createdAt,
+          updatedAt: input.updatedAt
+        }
+      });
+      await prisma.belief.update({ where: { id: input.beliefId }, data: { updatedAt: input.updatedAt } });
+      return toHypothesisRecord(record);
+    },
+    async updateHypothesis(id, patch) {
+      const record = await prisma.$transaction(async (tx) => {
+        const existing = await tx.hypothesis.findUnique({ where: { id } });
+        if (!existing) throw new Error(`Hypothesis not found: ${id}`);
+
+        const updated = await tx.hypothesis.update({
+          where: { id },
+          data: {
+            beliefId: patch.beliefId,
+            proposition: patch.proposition,
+            notes: patch.notes,
+            stance: patch.stance,
+            priorProbability: patch.priorProbability,
+            currentProbability: patch.currentProbability,
+            strength: patch.currentProbability,
+            status: patch.status,
+            startsAt: patch.startsAt,
+            expiresAt: patch.expiresAt,
+            expiryCondition: patch.expiryCondition,
+            updatedAt: patch.updatedAt
+          }
+        });
+
+        await tx.belief.update({ where: { id: existing.beliefId }, data: { updatedAt: patch.updatedAt } });
+        if (patch.beliefId && patch.beliefId !== existing.beliefId) {
+          await tx.belief.update({ where: { id: patch.beliefId }, data: { updatedAt: patch.updatedAt } });
+        }
+
+        return updated;
+      });
+      return toHypothesisRecord(record);
     },
     async listBeliefs() {
       const records = await prisma.belief.findMany({
@@ -347,6 +438,42 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
       });
       return records.map(toEvidenceRecord);
     },
+    async updateEvidence(id, patch) {
+      const record = await prisma.$transaction(async (tx) => {
+        if (patch.links) {
+          await tx.evidenceHypothesisLink.deleteMany({ where: { evidenceId: id } });
+        }
+
+        return tx.evidence.update({
+          where: { id },
+          data: {
+            title: patch.title,
+            content: patch.content,
+            url: patch.url,
+            confirmationMode: patch.confirmationMode,
+            credibility: patch.credibility,
+            status: patch.status,
+            metadata: patch.metadata as Prisma.InputJsonValue | undefined,
+            hypothesisLinks: patch.links
+              ? {
+                  create: patch.links.map((link) => ({
+                    id: link.id,
+                    hypothesisId: link.hypothesisId,
+                    direction: link.direction,
+                    relevance: link.relevance,
+                    likelihoodRatio: link.likelihoodRatio,
+                    confidence: link.confidence,
+                    rationale: link.rationale,
+                    createdAt: link.createdAt
+                  }))
+                }
+              : undefined
+          },
+          include: { hypothesisLinks: true }
+        });
+      });
+      return toEvidenceRecord(record);
+    },
     async createLikelihoodRun(input) {
       const record = await prisma.likelihoodRun.create({
         data: {
@@ -434,10 +561,19 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           finishedAt: input.finishedAt,
           itemCount: input.itemCount,
           deduplicatedCount: input.deduplicatedCount,
+          candidateCount: input.candidateCount,
+          autoAppliedCount: input.autoAppliedCount,
+          reviewCount: input.reviewCount,
+          queryCount: input.queryCount,
+          querySummary: input.querySummary as Prisma.InputJsonValue,
           errorMessage: input.errorMessage
         }
       });
       return toObservationRunRecord(record);
+    },
+    async listObservationRuns() {
+      const records = await prisma.observationRun.findMany({ orderBy: { startedAt: "desc" } });
+      return records.map(toObservationRunRecord);
     },
     async createModelArtifact(input) {
       const record = await prisma.modelArtifact.upsert({

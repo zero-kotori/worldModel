@@ -15,6 +15,7 @@ export default function WorldModelLayout({ children }: { children: React.ReactNo
               <Link
                 key={section.href}
                 href={section.href}
+                prefetch={false}
                 className="rounded-md px-3 py-2 text-ink/70 hover:bg-moss/10 hover:text-moss"
               >
                 {section.label}

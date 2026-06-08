@@ -15,6 +15,7 @@ export type AdapterSourceConfig = {
   adapter: string;
   url?: string;
   credentialRef?: string;
+  queries?: string[];
 };
 
 export type SourceAdapter = {
@@ -95,15 +96,25 @@ function createFetchAdapter(kind: ObservationSourceKind, dependencies: AdapterDe
     kind,
     async fetch(source) {
       if (!source.url) return [];
-      const text = await fetchText(source.url);
-      return [
-        {
-          title: titleFromHtml(text) ?? source.name,
-          content: stripHtml(text),
-          url: source.url,
-          sourceMetadata: { adapter: kind }
-        }
-      ];
+      const sourceUrl = source.url;
+      const queries = source.queries?.filter(Boolean) ?? [];
+      const urls =
+        sourceUrl.includes("{query}") && queries.length > 0
+          ? queries.map((query) => ({ url: sourceUrl.replaceAll("{query}", encodeURIComponent(query)), query }))
+          : sourceUrl.includes("{query}")
+            ? []
+            : [{ url: sourceUrl, query: undefined }];
+      return Promise.all(
+        urls.map(async (item) => {
+          const text = await fetchText(item.url);
+          return {
+            title: titleFromHtml(text) ?? source.name,
+            content: stripHtml(text),
+            url: item.url,
+            sourceMetadata: { adapter: kind, query: item.query }
+          };
+        })
+      );
     }
   };
 }

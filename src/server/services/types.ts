@@ -4,6 +4,7 @@ import type { ProbabilityMode, ProbabilitySnapshot, UpdatePreview } from "@/doma
 export type BeliefCategory = "AI_TREND" | "INVESTMENT" | "TECH_TREND" | "CAREER" | "SOURCE_RELIABILITY";
 export type BeliefStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
 export type HypothesisStatus = "ACTIVE" | "PAUSED" | "RESOLVED_TRUE" | "RESOLVED_FALSE" | "ARCHIVED";
+export type HypothesisStance = "SUPPORTS" | "OPPOSES";
 export type ObservationSourceKind =
   | "MANUAL"
   | "RSS"
@@ -18,7 +19,7 @@ export type ObservationStatus = "PENDING" | "DUPLICATE" | "UNKNOWN" | "CONFIRMED
 export type EvidenceConfirmationMode = "MANUAL" | "AUTO";
 export type EvidenceStatus = "ACTIVE" | "SUPERSEDED" | "REJECTED";
 export type EvidenceDirection = "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL";
-export type ObservationRunStatus = "SUCCESS" | "FAILED" | "DRY_RUN";
+export type ObservationRunStatus = "SUCCESS" | "FAILED" | "DRY_RUN" | "REVIEW_ONLY";
 export type ModelArtifactKind = "LIGHTWEIGHT" | "LLM" | "DEEP_ADAPTER";
 
 export type HypothesisRecord = {
@@ -26,6 +27,7 @@ export type HypothesisRecord = {
   beliefId: string;
   proposition: string;
   notes: string;
+  stance: HypothesisStance;
   priorProbability: number;
   currentProbability: number;
   strength: number;
@@ -142,7 +144,48 @@ export type ObservationRunRecord = {
   finishedAt?: Date;
   itemCount: number;
   deduplicatedCount: number;
+  candidateCount: number;
+  autoAppliedCount: number;
+  reviewCount: number;
+  queryCount: number;
+  querySummary: EvidenceLoopQuery[];
   errorMessage?: string;
+};
+
+export type RunSourceOptions = {
+  reviewOnly?: boolean;
+  autoConfirmThreshold?: number;
+  maxObservations?: number;
+  queries?: EvidenceLoopQuery[];
+};
+
+export type EvidenceLoopQuery = {
+  beliefId: string;
+  hypothesisId: string;
+  category: BeliefCategory;
+  query: string;
+};
+
+export type EvidenceLoopOptions = {
+  reviewOnly?: boolean;
+  beliefIds?: string[];
+  sourceIds?: string[];
+  autoConfirmThreshold?: number;
+  maxObservations?: number;
+};
+
+export type EvidenceLoopResult = {
+  mode: "auto-apply" | "review-only";
+  queryCount: number;
+  sourceRunCount: number;
+  itemCount: number;
+  deduplicatedCount: number;
+  candidateCount: number;
+  autoAppliedCount: number;
+  reviewCount: number;
+  failureCount: number;
+  queries: EvidenceLoopQuery[];
+  runs: ObservationRunRecord[];
 };
 
 export type ModelArtifactRecord = {
@@ -159,6 +202,7 @@ export type ModelArtifactRecord = {
 export type CreateHypothesisInput = {
   proposition: string;
   priorProbability: number;
+  stance?: HypothesisStance;
   notes?: string;
   startsAt?: Date;
   expiresAt?: Date;
@@ -172,6 +216,24 @@ export type CreateBeliefInput = {
   probabilityMode: ProbabilityMode;
   hypotheses: CreateHypothesisInput[];
 };
+
+export type UpdateBeliefInput = Partial<Pick<BeliefRecord, "title" | "category" | "description" | "probabilityMode" | "status">>;
+
+export type UpdateHypothesisInput = Partial<
+  Pick<
+    HypothesisRecord,
+    | "beliefId"
+    | "proposition"
+    | "notes"
+    | "stance"
+    | "priorProbability"
+    | "currentProbability"
+    | "status"
+    | "startsAt"
+    | "expiresAt"
+    | "expiryCondition"
+  >
+>;
 
 export type CreateObservationInput = {
   sourceId?: string;
@@ -199,6 +261,35 @@ export type ConfirmEvidenceInput = {
   }>;
 };
 
+export type UpdateEvidenceInput = {
+  title?: string;
+  content?: string;
+  url?: string;
+  credibility?: number;
+  metadata?: Record<string, unknown>;
+  links?: Array<{
+    hypothesisId: string;
+    direction: EvidenceDirection;
+    relevance: number;
+    likelihoodRatio: number;
+    confidence: number;
+    rationale: string;
+  }>;
+};
+
+export type ConnectEvidenceHypothesisInput = {
+  hypothesisId: string;
+  direction: EvidenceDirection;
+  relevance: number;
+  likelihoodRatio: number;
+  confidence: number;
+  rationale: string;
+};
+
+export type UpdateEvidenceRecordInput = Partial<Omit<EvidenceRecord, "id" | "observationId" | "confirmedAt" | "links">> & {
+  links?: EvidenceHypothesisLinkRecord[];
+};
+
 export type RunLikelihoodInput = {
   evidenceId: string;
   hypothesisId: string;
@@ -209,8 +300,16 @@ export type CreateSourceInput = Omit<ObservationSourceRecord, "id" | "createdAt"
 export type RawObservationInput = Pick<CreateObservationInput, "title" | "content" | "url" | "author" | "publishedAt">;
 export type ImportArtifactInput = Omit<ModelArtifactRecord, "id" | "createdAt">;
 
+export type ConfirmAndApplyEvidenceResult = {
+  evidence: EvidenceRecord;
+  event: BayesianUpdateEventRecord;
+};
+
 export type WorldModelStore = {
   createBelief(input: Omit<BeliefRecord, "hypotheses">, hypotheses: HypothesisRecord[]): Promise<BeliefRecord>;
+  updateBelief(id: string, patch: UpdateBeliefInput & { updatedAt: Date }): Promise<BeliefRecord>;
+  createHypothesis(input: HypothesisRecord): Promise<HypothesisRecord>;
+  updateHypothesis(id: string, patch: UpdateHypothesisInput & { updatedAt: Date }): Promise<HypothesisRecord>;
   listBeliefs(): Promise<BeliefRecord[]>;
   getBelief(id: string): Promise<BeliefRecord | null>;
   getHypothesis(id: string): Promise<HypothesisRecord | null>;
@@ -222,6 +321,7 @@ export type WorldModelStore = {
   createEvidence(evidence: EvidenceRecord): Promise<EvidenceRecord>;
   getEvidence(id: string): Promise<EvidenceRecord | null>;
   listEvidence(): Promise<EvidenceRecord[]>;
+  updateEvidence(id: string, patch: UpdateEvidenceRecordInput): Promise<EvidenceRecord>;
   createLikelihoodRun(input: LikelihoodRunRecord): Promise<LikelihoodRunRecord>;
   createUpdateEvent(input: BayesianUpdateEventRecord): Promise<BayesianUpdateEventRecord>;
   listUpdateEvents(): Promise<BayesianUpdateEventRecord[]>;
@@ -231,6 +331,7 @@ export type WorldModelStore = {
   listSources(): Promise<ObservationSourceRecord[]>;
   getSource(id: string): Promise<ObservationSourceRecord | null>;
   createObservationRun(input: ObservationRunRecord): Promise<ObservationRunRecord>;
+  listObservationRuns(): Promise<ObservationRunRecord[]>;
   createModelArtifact(input: ModelArtifactRecord): Promise<ModelArtifactRecord>;
   listModelArtifacts(): Promise<ModelArtifactRecord[]>;
 };
@@ -238,15 +339,23 @@ export type WorldModelStore = {
 export type WorldModelServices = {
   beliefs: {
     createBelief(input: CreateBeliefInput): Promise<BeliefRecord>;
+    updateBelief(id: string, input: UpdateBeliefInput): Promise<BeliefRecord>;
+    createHypothesis(beliefId: string, input: CreateHypothesisInput): Promise<HypothesisRecord>;
+    updateHypothesis(id: string, input: UpdateHypothesisInput): Promise<HypothesisRecord>;
     listBeliefs(): Promise<BeliefRecord[]>;
     getBelief(id: string): Promise<BeliefRecord | null>;
   };
   observations: {
     createObservation(input: CreateObservationInput): Promise<ObservationRecord>;
+    rejectObservation(id: string): Promise<ObservationRecord>;
     listObservations(): Promise<ObservationRecord[]>;
   };
   evidence: {
     confirmObservation(input: ConfirmEvidenceInput): Promise<EvidenceRecord>;
+    confirmAndApplyObservation(input: ConfirmEvidenceInput): Promise<ConfirmAndApplyEvidenceResult>;
+    updateAndReapply(evidenceId: string, input: UpdateEvidenceInput): Promise<ConfirmAndApplyEvidenceResult>;
+    connectHypothesis(evidenceId: string, input: ConnectEvidenceHypothesisInput): Promise<ConfirmAndApplyEvidenceResult>;
+    reject(evidenceId: string): Promise<EvidenceRecord>;
     listEvidence(): Promise<EvidenceRecord[]>;
   };
   likelihood: {
@@ -262,6 +371,11 @@ export type WorldModelServices = {
     listSources(): Promise<ObservationSourceRecord[]>;
     createSource(input: CreateSourceInput): Promise<ObservationSourceRecord>;
     runDryRun(sourceId: string, observations: RawObservationInput[]): Promise<ObservationRunRecord>;
+    runSource(sourceId: string, options?: RunSourceOptions): Promise<ObservationRunRecord>;
+    listRuns(): Promise<ObservationRunRecord[]>;
+  };
+  automation: {
+    runEvidenceLoop(options?: EvidenceLoopOptions): Promise<EvidenceLoopResult>;
   };
   models: {
     listArtifacts(): Promise<ModelArtifactRecord[]>;

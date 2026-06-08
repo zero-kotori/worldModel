@@ -13,13 +13,17 @@
     "prisma:migrate": "prisma migrate deploy",
     "prisma:dev": "prisma migrate dev",
     "observe": "tsx scripts/observe.ts",
-    "train:prepare": "python3 scripts/train_prepare.py",
+    "train:fetch": "tsx scripts/fetch_training_data.ts",
+    "train:prepare": "tsx scripts/train_prepare.ts",
+    "train:evaluate": "tsx scripts/evaluate_llm.ts",
     "train:light": "python3 scripts/train_light.py",
     "model:import": "tsx scripts/model-import.ts",
+    "acceptance:auto-loop": "tsx scripts/acceptance_auto_loop.ts",
     "test:browser": "tsx scripts/browser-check.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.10.1",
+    "@xyflow/react": "^12.11.0",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.7",
     "fast-xml-parser": "^5.2.5",

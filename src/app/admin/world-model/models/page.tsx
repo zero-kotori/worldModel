@@ -2,26 +2,37 @@ import { Upload } from "lucide-react";
 import { importModelArtifactAction } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { Field, SelectField } from "@/components/world-model/Field";
-import { DataWarning, EmptyState, PageSection } from "@/components/world-model/PageSection";
+import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
 
 export const dynamic = "force-dynamic";
 
-export default async function ModelsPage() {
+type PageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function ModelsPage({ searchParams }: PageProps) {
   const data = await loadWorldModelData();
+  const params = (await searchParams) ?? {};
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
       <DataWarning message={data.error} />
+      <StatusNotice message={firstParam(params.message)} />
+      <StatusNotice message={firstParam(params.error)} tone="error" />
       <PageSection title="模型产物导入">
         <form action={importModelArtifactAction} className="grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-4">
-          <Field label="名称" name="name" defaultValue="lightweight-demo" required />
+          <Field label="名称" name="name" defaultValue="lightweight-local" required />
           <SelectField
             label="类型"
             name="kind"
             options={["LIGHTWEIGHT", "LLM", "DEEP_ADAPTER"].map((value) => ({ value, label: value }))}
           />
           <Field label="版本" name="version" defaultValue="0.1.0" required />
-          <Field label="路径" name="path" defaultValue="./model-artifacts/lightweight-demo.json" required />
+          <Field label="路径" name="path" defaultValue="./model-artifacts/lightweight-local.json" required />
           <label className="flex items-center gap-2 text-sm text-ink/70">
             <input name="enabled" type="checkbox" defaultChecked /> 启用
           </label>

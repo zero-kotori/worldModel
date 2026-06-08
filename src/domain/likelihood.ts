@@ -1,5 +1,7 @@
 export type EstimatorOutput = {
   estimator: string;
+  direction?: "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL";
+  relevance?: number;
   likelihoodRatio?: number;
   confidence?: number;
   weight: number;

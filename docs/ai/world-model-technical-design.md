@@ -101,8 +101,8 @@ myWeb/
 - Postgres：存储信念、假设、观察、证据、更新事件和模型产物。
 - Tailwind CSS：实现后台 UI。
 - Vitest：测试纯领域逻辑和服务层。
-- Python：训练数据准备和轻量模型训练。
-- OpenAI-compatible adapter：支持 DeepSeek、OpenAI 和本地兼容接口。
+- Python：训练数据准备、LLM 评分评估和轻量 fallback 模型训练。
+- OpenAI-compatible adapter：作为 v1 主似然评分通道，支持 DeepSeek、OpenAI 和本地兼容接口。
 - cron 或 systemd timer：触发观察采集脚本。
 
 ## 4. 环境变量
@@ -456,7 +456,8 @@ type DuplicateDecision = {
   - 保存 observation run。
 - `model-service.ts`
   - 管理模型产物。
-  - 加载轻量模型。
+  - 调用 LLM API 主评分器。
+  - 加载轻量 fallback 模型。
   - 配置 estimator 权重。
 
 服务层必须进行输入校验，避免 UI 或 API 直接写入不合法概率、状态或 JSON。
@@ -591,13 +592,14 @@ npm run train:light
 npm run model:import
 ```
 
-Python 脚本职责：
+训练和评估脚本职责：
 
 - 下载或读取公开数据源。
 - 抽取 claim、evidence、outcome、timestamp、source 等字段。
 - 转换为统一训练样本。
-- 训练轻量可解释模型。
-- 导出模型产物和指标 JSON。
+- 使用真实样本评估 LLM API 主评分器。
+- 可选训练轻量可解释 fallback 模型。
+- 导出评分评估结果、模型产物和指标 JSON。
 
 训练数据来源：
 
@@ -670,6 +672,7 @@ npm run lint
 npm run typecheck
 npm run test
 npm run build
+npm run acceptance:auto-loop
 npm run observe -- --dry-run
 ```
 

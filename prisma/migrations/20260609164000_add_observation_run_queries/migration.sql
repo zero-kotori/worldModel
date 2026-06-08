@@ -1,0 +1,3 @@
+ALTER TABLE "ObservationRun"
+ADD COLUMN "queryCount" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "querySummary" JSONB;

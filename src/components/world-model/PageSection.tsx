@@ -17,3 +17,12 @@ export function DataWarning({ message }: { message: string | null }) {
   if (!message) return null;
   return <div className="mb-4 rounded-md border border-amber/30 bg-amber/10 px-4 py-3 text-sm text-amber">{message}</div>;
 }
+
+export function StatusNotice({ message, tone = "success" }: { message?: string; tone?: "success" | "error" }) {
+  if (!message) return null;
+  const classes =
+    tone === "error"
+      ? "border-berry/30 bg-berry/10 text-berry"
+      : "border-moss/30 bg-moss/10 text-moss";
+  return <div className={`mb-4 rounded-md border px-4 py-3 text-sm ${classes}`}>{message}</div>;
+}

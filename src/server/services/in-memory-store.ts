@@ -69,6 +69,50 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
       beliefs.push(record);
       return cloneBelief(record);
     },
+    async updateBelief(id, patch) {
+      const index = beliefs.findIndex((item) => item.id === id);
+      if (index === -1) throw new Error(`Belief not found: ${id}`);
+      beliefs[index] = {
+        ...beliefs[index],
+        ...patch,
+        hypotheses: beliefs[index].hypotheses,
+        updatedAt: patch.updatedAt
+      };
+      return cloneBelief(beliefs[index]);
+    },
+    async createHypothesis(input) {
+      const belief = beliefs.find((item) => item.id === input.beliefId);
+      if (!belief) throw new Error(`Belief not found: ${input.beliefId}`);
+      belief.hypotheses.push(cloneHypothesis(input));
+      belief.updatedAt = input.updatedAt;
+      return cloneHypothesis(input);
+    },
+    async updateHypothesis(id, patch) {
+      const sourceBelief = beliefs.find((belief) => belief.hypotheses.some((hypothesis) => hypothesis.id === id));
+      if (!sourceBelief) throw new Error(`Hypothesis not found: ${id}`);
+      const sourceIndex = sourceBelief.hypotheses.findIndex((hypothesis) => hypothesis.id === id);
+      const existing = sourceBelief.hypotheses[sourceIndex];
+      const targetBeliefId = patch.beliefId ?? existing.beliefId;
+      const targetBelief = beliefs.find((belief) => belief.id === targetBeliefId);
+      if (!targetBelief) throw new Error(`Belief not found: ${targetBeliefId}`);
+      const updated = cloneHypothesis({
+        ...existing,
+        ...patch,
+        beliefId: targetBeliefId,
+        strength: patch.currentProbability ?? existing.strength,
+        updatedAt: patch.updatedAt
+      });
+
+      sourceBelief.hypotheses.splice(sourceIndex, 1);
+      if (sourceBelief.id === targetBelief.id) {
+        sourceBelief.hypotheses.splice(sourceIndex, 0, updated);
+      } else {
+        targetBelief.hypotheses.push(updated);
+      }
+      sourceBelief.updatedAt = patch.updatedAt;
+      targetBelief.updatedAt = patch.updatedAt;
+      return cloneHypothesis(updated);
+    },
     async listBeliefs() {
       return beliefs.map(cloneBelief);
     },
@@ -122,6 +166,16 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
     async listEvidence() {
       return evidenceItems.map(cloneEvidence);
     },
+    async updateEvidence(id, patch) {
+      const index = evidenceItems.findIndex((item) => item.id === id);
+      if (index === -1) throw new Error(`Evidence not found: ${id}`);
+      evidenceItems[index] = {
+        ...evidenceItems[index],
+        ...patch,
+        links: patch.links ? patch.links.map((link) => ({ ...link, createdAt: new Date(link.createdAt) })) : evidenceItems[index].links
+      };
+      return cloneEvidence(evidenceItems[index]);
+    },
     async createLikelihoodRun(input) {
       likelihoodRuns.push(input);
       return { ...input, createdAt: new Date(input.createdAt) };
@@ -171,8 +225,17 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
       return {
         ...input,
         startedAt: new Date(input.startedAt),
-        finishedAt: cloneDate(input.finishedAt)
+        finishedAt: cloneDate(input.finishedAt),
+        querySummary: input.querySummary.map((query) => ({ ...query }))
       };
+    },
+    async listObservationRuns() {
+      return observationRuns.map((run) => ({
+        ...run,
+        startedAt: new Date(run.startedAt),
+        finishedAt: cloneDate(run.finishedAt),
+        querySummary: run.querySummary.map((query) => ({ ...query }))
+      }));
     },
     async createModelArtifact(input) {
       const existing = modelArtifacts.find((item) => item.name === input.name && item.version === input.version);

@@ -34,6 +34,11 @@ enum HypothesisStatus {
   ARCHIVED
 }
 
+enum HypothesisStance {
+  SUPPORTS
+  OPPOSES
+}
+
 enum ObservationSourceKind {
   MANUAL
   RSS
@@ -87,6 +92,7 @@ enum ObservationRunStatus {
   SUCCESS
   FAILED
   DRY_RUN
+  REVIEW_ONLY
 }
 
 enum ModelArtifactKind {
@@ -116,6 +122,7 @@ model Hypothesis {
   belief             Belief                   @relation(fields: [beliefId], references: [id], onDelete: Cascade)
   proposition        String
   notes              String
+  stance             HypothesisStance         @default(SUPPORTS)
   priorProbability   Float
   currentProbability Float
   strength           Float
@@ -253,6 +260,11 @@ model ObservationRun {
   finishedAt        DateTime?
   itemCount         Int                  @default(0)
   deduplicatedCount Int                  @default(0)
+  candidateCount    Int                  @default(0)
+  autoAppliedCount  Int                  @default(0)
+  reviewCount       Int                  @default(0)
+  queryCount        Int                  @default(0)
+  querySummary      Json?
   errorMessage      String?
 }
 
