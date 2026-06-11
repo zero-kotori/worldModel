@@ -1,6 +1,6 @@
-import type { EvidenceLoopOptions, WorldModelServices } from "@/server/services/types";
+import type { AutomationWorkerConfigRecord, EvidenceLoopOptions, WorldModelServices } from "@/server/services/types";
 
-type AutomationServices = Pick<WorldModelServices["automation"], "recordHeartbeat" | "runEvidenceLoop">;
+type AutomationServices = Pick<WorldModelServices["automation"], "listWorkerConfigs" | "recordHeartbeat" | "runEvidenceLoop">;
 type TimerHandle = unknown;
 
 export type EvidenceLoopWorkerStartInput = {
@@ -70,6 +70,17 @@ function delayForFailures(input: {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function loopOptionsFromConfig(config: AutomationWorkerConfigRecord): EvidenceLoopOptions {
+  return {
+    reviewOnly: config.reviewOnly,
+    candidateThreshold: config.candidateThreshold,
+    autoConfirmThreshold: config.autoConfirmThreshold,
+    maxObservations: config.maxObservations,
+    bootstrapDefaultSources: config.bootstrapDefaultSources,
+    forceAutoApply: config.forceAutoApply
+  };
 }
 
 export function createEvidenceLoopWorkerController(dependencies: WorkerControllerDependencies = {}) {
@@ -146,6 +157,23 @@ export function createEvidenceLoopWorkerController(dependencies: WorkerControlle
       await recordHeartbeat(automation, state, { status: "RUNNING" });
       await runOnce(state, automation);
       return this.listRuntime().find((worker) => worker.workerId === workerId);
+    },
+    async restoreEnabled(automation: AutomationServices) {
+      const configs = await automation.listWorkerConfigs();
+      for (const config of configs) {
+        if (!config.enabled || workers.has(config.id)) continue;
+        await this.start(
+          {
+            workerId: config.id,
+            intervalMs: config.intervalMs,
+            failureBackoffMultiplier: config.failureBackoffMultiplier,
+            maxIntervalMs: config.maxIntervalMs,
+            loopOptions: loopOptionsFromConfig(config)
+          },
+          automation
+        );
+      }
+      return this.listRuntime();
     },
     async stop(workerId = DEFAULT_WORKER_ID, automation: AutomationServices, options: { recordIdle?: boolean } = {}) {
       const normalizedWorkerId = workerId.trim() || DEFAULT_WORKER_ID;

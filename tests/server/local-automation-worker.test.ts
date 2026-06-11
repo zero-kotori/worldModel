@@ -165,4 +165,81 @@ describe("local evidence loop worker", () => {
     });
     expect(controller.listRuntime()).toEqual([]);
   });
+
+  it("restores enabled worker configs once without restarting already running workers", async () => {
+    let runCount = 0;
+    const scheduled: Array<{ ms: number; id: number }> = [];
+    const controller = createEvidenceLoopWorkerController({
+      now: () => new Date("2026-06-11T05:00:00.000Z"),
+      setTimer: (_callback, ms) => {
+        const id = scheduled.length + 1;
+        scheduled.push({ ms, id });
+        return id;
+      },
+      clearTimer: () => {}
+    });
+    const automation = createAutomation({
+      runEvidenceLoop: async () => {
+        runCount += 1;
+        return {
+          mode: "auto-apply",
+          queryCount: 1,
+          sourceRunCount: 1,
+          itemCount: 1,
+          deduplicatedCount: 0,
+          candidateCount: 1,
+          autoAppliedCount: 1,
+          reviewCount: 0,
+          failureCount: 0,
+          queries: [],
+          runs: []
+        };
+      },
+      listWorkerConfigs: async () => [
+        {
+          id: "default",
+          enabled: true,
+          intervalMs: 120_000,
+          failureBackoffMultiplier: 2,
+          maxIntervalMs: 600_000,
+          reviewOnly: true,
+          maxObservations: 5,
+          candidateThreshold: 0.2,
+          autoConfirmThreshold: 0.8,
+          bootstrapDefaultSources: true,
+          forceAutoApply: false,
+          createdAt: new Date("2026-06-11T00:00:00.000Z"),
+          updatedAt: new Date("2026-06-11T00:00:00.000Z")
+        },
+        {
+          id: "disabled",
+          enabled: false,
+          intervalMs: 60_000,
+          failureBackoffMultiplier: 2,
+          maxIntervalMs: 600_000,
+          reviewOnly: true,
+          maxObservations: undefined,
+          candidateThreshold: undefined,
+          autoConfirmThreshold: undefined,
+          bootstrapDefaultSources: true,
+          forceAutoApply: false,
+          createdAt: new Date("2026-06-11T00:00:00.000Z"),
+          updatedAt: new Date("2026-06-11T00:00:00.000Z")
+        }
+      ]
+    });
+
+    await controller.restoreEnabled(automation);
+    await controller.restoreEnabled(automation);
+
+    expect(runCount).toBe(1);
+    expect(scheduled).toEqual([expect.objectContaining({ ms: 120_000 })]);
+    expect(controller.listRuntime()).toEqual([
+      expect.objectContaining({
+        workerId: "default",
+        running: true,
+        nextRunAt: new Date("2026-06-11T05:02:00.000Z")
+      })
+    ]);
+  });
 });

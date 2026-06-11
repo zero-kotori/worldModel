@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getEvidenceLoopWorkerController } from "@/server/automation/local-worker";
 import { getWorldModelServices } from "@/server/services";
 
 function formatDataError(error: unknown) {
@@ -28,6 +29,7 @@ export async function loadWorldModelData() {
 
   try {
     const services = getWorldModelServices();
+    await getEvidenceLoopWorkerController().restoreEnabled(services.automation);
     const [beliefs, observations, evidence, sources, runs, heartbeats, workerConfigs, models, updates] = await Promise.all([
       services.beliefs.listBeliefs(),
       services.observations.listObservations(),
