@@ -868,6 +868,45 @@ describe("world model services", () => {
     await expect(services.updates.rollback(event.id)).rejects.toThrow("already rolled back");
   });
 
+  it("rejects applying the same active evidence update twice", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+    const belief = await services.beliefs.createBelief({
+      title: "Duplicate update safety",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [{ proposition: "Duplicate application should be blocked", priorProbability: 0.4, notes: "" }]
+    });
+    const observation = await services.observations.createObservation({
+      title: "Duplicate update evidence",
+      content: "Duplicate application should be blocked.",
+      credibility: 0.8
+    });
+    const evidence = await services.evidence.confirmObservation({
+      observationId: observation.id,
+      confirmationMode: "MANUAL",
+      links: [
+        {
+          hypothesisId: belief.hypotheses[0].id,
+          direction: "SUPPORTS",
+          relevance: 0.8,
+          likelihoodRatio: 2,
+          confidence: 0.7,
+          rationale: "Initial update."
+        }
+      ]
+    });
+    const preview = await services.updates.createPreview(evidence.id);
+    await services.updates.applyPreview(preview);
+
+    await expect(services.updates.applyPreview(preview)).rejects.toThrow("already has an active update");
+    const events = await services.updates.listEvents();
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+
+    expect(events).toHaveLength(1);
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBe(events[0].posteriorSnapshot[belief.hypotheses[0].id]);
+  });
+
   it("edits applied evidence by rolling back the old update and reapplying with per-hypothesis links", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const belief = await services.beliefs.createBelief({

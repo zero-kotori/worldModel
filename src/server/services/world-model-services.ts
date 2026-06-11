@@ -578,7 +578,16 @@ export function createWorldModelServices(
     return { ...createUpdatePreview(belief, links), evidenceId };
   }
 
+  async function assertEvidenceHasNoActiveUpdate(evidenceId: string | undefined) {
+    if (!evidenceId) return;
+    const activeUpdate = (await store.listUpdateEvents()).find((event) => event.evidenceId === evidenceId && event.status === "APPLIED");
+    if (activeUpdate) {
+      throw new Error(`Evidence already has an active update: ${evidenceId}`);
+    }
+  }
+
   async function applyPreview(preview: UpdatePreview, likelihoodRunId?: string): Promise<BayesianUpdateEventRecord> {
+    await assertEvidenceHasNoActiveUpdate(preview.evidenceId);
     const event = applyUpdate(preview, { id: createRecordId("update"), createdAt: now() });
     await store.updateHypothesisProbabilities(event.posteriorSnapshot);
     return store.createUpdateEvent({
