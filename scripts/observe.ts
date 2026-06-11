@@ -10,6 +10,8 @@ import type { EvidenceLoopOptions, ObservationSourceKind } from "@/server/servic
 config({ path: ".env.local" });
 config();
 
+const DEFAULT_REPEAT_INTERVAL_MS = 15 * 60 * 1000;
+
 function arg(name: string, argv = process.argv) {
   const index = argv.indexOf(name);
   return index >= 0 ? argv[index + 1] : undefined;
@@ -20,6 +22,18 @@ function numberArg(name: string, argv = process.argv) {
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function positiveIntegerArg(name: string, argv = process.argv) {
+  const value = numberArg(name, argv);
+  if (value === undefined || value < 1) return undefined;
+  return Math.floor(value);
+}
+
+function intervalMsArg(argv = process.argv) {
+  const seconds = numberArg("--interval-seconds", argv);
+  if (seconds === undefined || seconds < 0) return DEFAULT_REPEAT_INTERVAL_MS;
+  return Math.floor(seconds * 1000);
 }
 
 function kindFromArg(value: string | undefined): ObservationSourceKind {
@@ -47,6 +61,9 @@ export type ObserveCliOptions = {
   reviewOnly: boolean;
   bootstrapDefaultSources: boolean;
   forceAutoApply: boolean;
+  repeat: boolean;
+  intervalMs: number;
+  iterations?: number;
   sourceId?: string;
   runAllSources: boolean;
   kind: ObservationSourceKind;
@@ -65,6 +82,7 @@ export function parseObserveArgs(argv = process.argv): ObserveCliOptions {
   const bootstrapDefaultSources =
     argv.includes("--bootstrap-default-sources") || (loop && !sourceId && !argv.includes("--no-bootstrap-default-sources"));
   const forceAutoApply = argv.includes("--force-auto-apply");
+  const repeat = argv.includes("--repeat") || argv.includes("--watch");
 
   return {
     dryRun,
@@ -72,6 +90,9 @@ export function parseObserveArgs(argv = process.argv): ObserveCliOptions {
     reviewOnly,
     bootstrapDefaultSources,
     forceAutoApply,
+    repeat,
+    intervalMs: intervalMsArg(argv),
+    iterations: positiveIntegerArg("--iterations", argv),
     sourceId,
     runAllSources,
     kind: kindFromArg(arg("--adapter", argv) ?? arg("--kind", argv)),
@@ -90,6 +111,42 @@ export function parseObserveArgs(argv = process.argv): ObserveCliOptions {
   };
 }
 
+export type RepeatedTaskOptions = {
+  repeat?: boolean;
+  iterations?: number;
+  intervalMs?: number;
+  collectResults?: boolean;
+  wait?: (ms: number) => Promise<void>;
+};
+
+function waitMs(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+export async function runRepeatedTask<T>(
+  task: (iteration: number) => Promise<T>,
+  options: RepeatedTaskOptions = {}
+): Promise<T[]> {
+  const repeat = options.repeat ?? false;
+  const intervalMs = Math.max(0, options.intervalMs ?? DEFAULT_REPEAT_INTERVAL_MS);
+  const collectResults = options.collectResults ?? true;
+  const wait = options.wait ?? waitMs;
+  const results: T[] = [];
+  let iteration = 1;
+
+  while (options.iterations === undefined || iteration <= options.iterations) {
+    const result = await task(iteration);
+    if (collectResults) results.push(result);
+    if (!repeat || (options.iterations !== undefined && iteration >= options.iterations)) break;
+    await wait(intervalMs);
+    iteration += 1;
+  }
+
+  return results;
+}
+
 async function main() {
   const options = parseObserveArgs();
 
@@ -98,8 +155,24 @@ async function main() {
     try {
       const services = createConfiguredWorldModelServices(createPrismaWorldModelStore(prisma));
       if (options.loop) {
-        const result = await services.automation.runEvidenceLoop(options.loopOptions);
-        console.log(JSON.stringify(result, null, 2));
+        if (!options.repeat) {
+          const result = await services.automation.runEvidenceLoop(options.loopOptions);
+          console.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        await runRepeatedTask(
+          async (iteration) => {
+            const result = await services.automation.runEvidenceLoop(options.loopOptions);
+            console.log(JSON.stringify({ iteration, result }, null, 2));
+            return result;
+          },
+          {
+            repeat: true,
+            intervalMs: options.intervalMs,
+            iterations: options.iterations,
+            collectResults: false
+          }
+        );
         return;
       }
       const configuredSources = await services.sources.listSources();
