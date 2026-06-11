@@ -522,5 +522,23 @@ describe("world model sources UI", () => {
       label: "处理观察积压",
       href: "/admin/world-model/observations"
     });
+
+    const missingLlmHealth = summarizeAutomationHealth([], [], {
+      sourceCount: 1,
+      enabledSourceCount: 1,
+      activeBeliefCount: 1,
+      activeHypothesisCount: 1,
+      effectiveHypothesisCount: 1,
+      llmScorerReady: false
+    });
+    expect(missingLlmHealth.diagnostics).toContainEqual({
+      level: "warning",
+      title: "LLM 主评分器未配置",
+      detail: "LLM API 是 v1 主评分器；缺少配置时，候选识别和似然评分会退化为 fallback 或待审。"
+    });
+    expect(missingLlmHealth.nextActions).toContainEqual({
+      label: "检查模型配置",
+      href: "/admin/world-model/models"
+    });
   });
 });

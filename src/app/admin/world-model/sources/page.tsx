@@ -14,6 +14,7 @@ import {
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { isHypothesisCurrentlyEffective } from "@/lib/world-model-beliefs-ui";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
+import { summarizeLlmScorerConfig } from "@/lib/world-model-models-ui";
 import { listSourcePresets } from "@/lib/world-model-source-presets";
 import { getLatestSourceRun, runErrorSummary, runQuerySummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
@@ -82,6 +83,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const openObservationCount = data.observations.filter((observation) =>
     ["PENDING", "DUPLICATE", "UNKNOWN"].includes(observation.status)
   ).length;
+  const llmScorer = summarizeLlmScorerConfig(process.env);
   const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, {
     workerRuntime: data.workerRuntime,
     sources: automationSources,
@@ -90,7 +92,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     activeBeliefCount: activeBeliefs.length,
     activeHypothesisCount,
     effectiveHypothesisCount,
-    openObservationCount
+    openObservationCount,
+    llmScorerReady: llmScorer.tone === "healthy"
   });
   const workerConfig = data.workerConfigs[0] ?? fallbackWorkerConfig();
   const stopWorkerId =

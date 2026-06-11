@@ -29,6 +29,7 @@ type AutomationHealthOptions =
       activeHypothesisCount?: number;
       effectiveHypothesisCount?: number;
       openObservationCount?: number;
+      llmScorerReady?: boolean;
       sources?: ObservationSourceRecord[];
     };
 type AutomationWorkerSummary = {
@@ -221,6 +222,7 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
       activeHypothesisCount: undefined,
       effectiveHypothesisCount: undefined,
       openObservationCount: undefined,
+      llmScorerReady: undefined,
       sources: []
     };
   }
@@ -233,6 +235,7 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
     activeHypothesisCount: options?.activeHypothesisCount,
     effectiveHypothesisCount: options?.effectiveHypothesisCount,
     openObservationCount: options?.openObservationCount,
+    llmScorerReady: options?.llmScorerReady,
     sources: options?.sources ?? []
   };
 }
@@ -248,6 +251,7 @@ function automationDiagnostics(input: {
   activeHypothesisCount?: number;
   effectiveHypothesisCount?: number;
   openObservationCount?: number;
+  llmScorerReady?: boolean;
   latestRun?: ObservationRunRecord;
   latestFailedRun?: ObservationRunRecord;
   suppressedSources: SuppressedAutomationSource[];
@@ -368,6 +372,14 @@ function automationDiagnostics(input: {
     });
   }
 
+  if (input.llmScorerReady === false) {
+    diagnostics.push({
+      level: "warning",
+      title: "LLM 主评分器未配置",
+      detail: "LLM API 是 v1 主评分器；缺少配置时，候选识别和似然评分会退化为 fallback 或待审。"
+    });
+  }
+
   return diagnostics;
 }
 
@@ -446,6 +458,12 @@ function automationNextActions(diagnostics: AutomationDiagnostic[]): AutomationN
         href: "/admin/world-model/observations"
       });
     }
+    if (diagnostic.title === "LLM 主评分器未配置") {
+      addNextAction(actions, {
+        label: "检查模型配置",
+        href: "/admin/world-model/models"
+      });
+    }
   }
   return actions;
 }
@@ -475,6 +493,7 @@ export function summarizeAutomationHealth(
     activeHypothesisCount,
     effectiveHypothesisCount,
     openObservationCount,
+    llmScorerReady,
     sources
   } = normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
@@ -489,6 +508,7 @@ export function summarizeAutomationHealth(
     activeHypothesisCount,
     effectiveHypothesisCount,
     openObservationCount,
+    llmScorerReady,
     latestRun,
     latestFailedRun,
     suppressedSources,
