@@ -1,21 +1,22 @@
 import { deduplicateObservation } from "@/domain/dedupe";
 import { PrismaClient } from "@prisma/client";
 import { config } from "dotenv";
+import { pathToFileURL } from "node:url";
 import { createConfiguredWorldModelServices } from "@/server/services/configured";
 import { createPrismaWorldModelStore } from "@/server/services/prisma-store";
 import { createSourceAdapter, supportedSourceKinds, type RawObservation } from "@/server/sources/adapters";
-import type { ObservationSourceKind } from "@/server/services/types";
+import type { EvidenceLoopOptions, ObservationSourceKind } from "@/server/services/types";
 
 config({ path: ".env.local" });
 config();
 
-function arg(name: string) {
-  const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
+function arg(name: string, argv = process.argv) {
+  const index = argv.indexOf(name);
+  return index >= 0 ? argv[index + 1] : undefined;
 }
 
-function numberArg(name: string) {
-  const value = arg(name);
+function numberArg(name: string, argv = process.argv) {
+  const value = arg(name, argv);
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -40,37 +41,72 @@ function countDuplicates(observations: RawObservation[]) {
   return duplicateCount;
 }
 
-async function main() {
-  const dryRun = process.argv.includes("--dry-run");
-  const loop = process.argv.includes("--loop");
-  const reviewOnly = process.argv.includes("--review-only");
-  const bootstrapDefaultSources = process.argv.includes("--bootstrap-default-sources");
-  const forceAutoApply = process.argv.includes("--force-auto-apply");
-  const sourceId = arg("--source");
-  const runAllSources = process.argv.includes("--all");
+export type ObserveCliOptions = {
+  dryRun: boolean;
+  loop: boolean;
+  reviewOnly: boolean;
+  bootstrapDefaultSources: boolean;
+  forceAutoApply: boolean;
+  sourceId?: string;
+  runAllSources: boolean;
+  kind: ObservationSourceKind;
+  url?: string;
+  name?: string;
+  credentialRef?: string;
+  loopOptions: EvidenceLoopOptions;
+};
 
-  if (loop || sourceId || runAllSources) {
+export function parseObserveArgs(argv = process.argv): ObserveCliOptions {
+  const dryRun = argv.includes("--dry-run");
+  const loop = argv.includes("--loop");
+  const reviewOnly = argv.includes("--review-only");
+  const sourceId = arg("--source", argv);
+  const runAllSources = argv.includes("--all");
+  const bootstrapDefaultSources =
+    argv.includes("--bootstrap-default-sources") || (loop && !sourceId && !argv.includes("--no-bootstrap-default-sources"));
+  const forceAutoApply = argv.includes("--force-auto-apply");
+
+  return {
+    dryRun,
+    loop,
+    reviewOnly,
+    bootstrapDefaultSources,
+    forceAutoApply,
+    sourceId,
+    runAllSources,
+    kind: kindFromArg(arg("--adapter", argv) ?? arg("--kind", argv)),
+    url: arg("--url", argv),
+    name: arg("--name", argv),
+    credentialRef: arg("--credential-ref", argv),
+    loopOptions: {
+      reviewOnly,
+      sourceIds: sourceId ? [sourceId] : undefined,
+      maxObservations: numberArg("--max-observations", argv),
+      autoConfirmThreshold: numberArg("--threshold", argv),
+      bootstrapDefaultSources,
+      forceAutoApply
+    }
+  };
+}
+
+async function main() {
+  const options = parseObserveArgs();
+
+  if (options.loop || options.sourceId || options.runAllSources) {
     const prisma = new PrismaClient();
     try {
       const services = createConfiguredWorldModelServices(createPrismaWorldModelStore(prisma));
-      if (loop) {
-        const result = await services.automation.runEvidenceLoop({
-          reviewOnly,
-          sourceIds: sourceId ? [sourceId] : undefined,
-          maxObservations: numberArg("--max-observations"),
-          autoConfirmThreshold: numberArg("--threshold"),
-          bootstrapDefaultSources,
-          forceAutoApply
-        });
+      if (options.loop) {
+        const result = await services.automation.runEvidenceLoop(options.loopOptions);
         console.log(JSON.stringify(result, null, 2));
         return;
       }
       const configuredSources = await services.sources.listSources();
-      const sources = sourceId ? configuredSources.filter((source) => source.id === sourceId) : configuredSources;
-      if (sourceId && sources.length === 0) {
-        throw new Error(`Source not found: ${sourceId}`);
+      const sources = options.sourceId ? configuredSources.filter((source) => source.id === options.sourceId) : configuredSources;
+      if (options.sourceId && sources.length === 0) {
+        throw new Error(`Source not found: ${options.sourceId}`);
       }
-      if (reviewOnly) {
+      if (options.reviewOnly) {
         const runs = [];
         for (const source of sources.filter((item) => item.enabled)) {
           const run = await services.sources.runSource(source.id, { reviewOnly: true });
@@ -81,35 +117,39 @@ async function main() {
       }
       const runs = [];
       for (const source of sources) {
-        runs.push(await services.sources.runSource(source.id));
+        runs.push(
+          await services.sources.runSource(source.id, {
+            autoConfirmThreshold: options.loopOptions.autoConfirmThreshold,
+            forceAutoApply: options.forceAutoApply,
+            maxObservations: options.loopOptions.maxObservations
+          })
+        );
       }
-      console.log(JSON.stringify({ mode: loop ? "loop" : "write", runs }, null, 2));
+      console.log(JSON.stringify({ mode: options.loop ? "loop" : "write", runs }, null, 2));
     } finally {
       await prisma.$disconnect();
     }
     return;
   }
 
-  const kind = kindFromArg(arg("--adapter") ?? arg("--kind"));
-  const url = arg("--url");
-  const adapter = createSourceAdapter(kind);
+  const adapter = createSourceAdapter(options.kind);
   const observations = await adapter.fetch({
-    name: arg("--name") ?? `${kind} dry run`,
-    adapter: kind.toLowerCase(),
-    url,
-    credentialRef: arg("--credential-ref")
+    name: options.name ?? `${options.kind} dry run`,
+    adapter: options.kind.toLowerCase(),
+    url: options.url,
+    credentialRef: options.credentialRef
   });
 
   console.log(
     JSON.stringify(
       {
-        mode: dryRun ? "dry-run" : "write-disabled",
-        adapter: kind,
+        mode: options.dryRun ? "dry-run" : "write-disabled",
+        adapter: options.kind,
         supportedAdapters: supportedSourceKinds,
         fetched: observations.length,
         deduplicated: countDuplicates(observations),
         observations,
-        message: dryRun
+        message: options.dryRun
           ? "Observation dry-run completed without writing evidence."
           : "Use --source <source-id> or --all to persist observations from configured sources."
       },
@@ -119,7 +159,9 @@ async function main() {
   );
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
