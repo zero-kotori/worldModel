@@ -132,6 +132,40 @@ function createFetchAdapter(kind: ObservationSourceKind, dependencies: AdapterDe
   };
 }
 
+function queryUrls(sourceUrl: string, queries: string[]) {
+  const querySource = sourceUrl.includes("{query}");
+  if (!querySource) return [{ url: sourceUrl, query: undefined }];
+  return queries.length > 0 ? queries.map((query) => ({ url: sourceUrl.replaceAll("{query}", encodeURIComponent(query)), query })) : [];
+}
+
+async function fetchQueryRssObservations(
+  source: AdapterSourceConfig,
+  fetchText: (url: string) => Promise<string>
+): Promise<RawObservation[]> {
+  if (!source.url) return [];
+  const queries = source.queries?.filter(Boolean) ?? [];
+  const urls = queryUrls(source.url, queries);
+
+  if (!source.url.includes("{query}")) {
+    return parseRssObservations(await fetchText(source.url));
+  }
+
+  const fetchOne = async (item: (typeof urls)[number]): Promise<RawObservation[]> =>
+    parseRssObservations(await fetchText(item.url)).map((observation) => ({
+      ...observation,
+      sourceMetadata: { ...observation.sourceMetadata, query: item.query }
+    }));
+  const results = await Promise.allSettled(urls.map(fetchOne));
+  const observations = results
+    .filter((result): result is PromiseFulfilledResult<RawObservation[]> => result.status === "fulfilled")
+    .flatMap((result) => result.value);
+  if (observations.length > 0 || urls.length === 0) return observations;
+
+  const firstError = results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+  const reason = firstError instanceof Error ? firstError.message : String(firstError);
+  throw new Error(`All ${urls.length} query RSS fetches failed for ${source.name}: ${reason}`);
+}
+
 export function createSourceAdapter(kind: ObservationSourceKind, dependencies: AdapterDependencies = {}): SourceAdapter {
   const fetchText = dependencies.fetchText ?? defaultFetchText;
 
@@ -139,8 +173,7 @@ export function createSourceAdapter(kind: ObservationSourceKind, dependencies: A
     return {
       kind,
       async fetch(source) {
-        if (!source.url) return [];
-        return parseRssObservations(await fetchText(source.url));
+        return fetchQueryRssObservations(source, fetchText);
       }
     };
   }

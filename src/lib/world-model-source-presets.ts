@@ -70,6 +70,19 @@ export const sourcePresetDefinitions: SourcePresetDefinition[] = [
     enabled: true,
     autoConfirm: false,
     autoConfirmThreshold: 0.86
+  },
+  {
+    id: "google-news-query",
+    name: "Google News Query RSS",
+    description: "Query-driven Google News RSS for category-neutral belief and hypothesis evidence search.",
+    kind: "RSS",
+    url: "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en",
+    adapter: "rss_query",
+    credentialRef: undefined,
+    credibility: 0.66,
+    enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.88
   }
 ];
 

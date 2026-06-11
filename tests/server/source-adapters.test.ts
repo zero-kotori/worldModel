@@ -65,6 +65,45 @@ describe("observation source adapters", () => {
     ]);
   });
 
+  it("expands query templates for RSS sources and keeps successful query feeds", async () => {
+    const requestedUrls: string[] = [];
+    const adapter = createSourceAdapter("RSS", {
+      fetchText: async (url) => {
+        requestedUrls.push(url);
+        if (url !== "https://news.example/rss?q=career%20signal") {
+          throw new Error(`Unexpected RSS URL: ${url}`);
+        }
+        return `<?xml version="1.0"?>
+          <rss><channel>
+            <item>
+              <title>Career signal</title>
+              <link>https://example.com/career-signal</link>
+              <description>Evidence from a query-specific news feed.</description>
+            </item>
+          </channel></rss>`;
+      }
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "News Search",
+        adapter: "rss",
+        url: "https://news.example/rss?q={query}",
+        queries: ["bad-query", "career signal"]
+      })
+    ).resolves.toEqual([
+      {
+        title: "Career signal",
+        content: "Evidence from a query-specific news feed.",
+        url: "https://example.com/career-signal",
+        author: undefined,
+        publishedAt: undefined,
+        sourceMetadata: { adapter: "RSS", query: "career signal" }
+      }
+    ]);
+    expect(requestedUrls).toEqual(["https://news.example/rss?q=bad-query", "https://news.example/rss?q=career%20signal"]);
+  });
+
   it("fails a query source only when every query URL fails", async () => {
     const adapter = createSourceAdapter("SEARCH", {
       fetchText: async () => {
