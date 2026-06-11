@@ -2,10 +2,11 @@ import { deduplicateObservation } from "@/domain/dedupe";
 import { PrismaClient } from "@prisma/client";
 import { config } from "dotenv";
 import { pathToFileURL } from "node:url";
+import { evidenceLoopResultNeedsAttention } from "@/server/automation/evidence-loop-result";
 import { createConfiguredWorldModelServices } from "@/server/services/configured";
 import { createPrismaWorldModelStore } from "@/server/services/prisma-store";
 import { createSourceAdapter, supportedSourceKinds, type RawObservation } from "@/server/sources/adapters";
-import type { EvidenceLoopOptions, EvidenceLoopResult, ObservationSourceKind, WorldModelServices } from "@/server/services/types";
+import type { EvidenceLoopOptions, ObservationSourceKind, WorldModelServices } from "@/server/services/types";
 
 config({ path: ".env.local" });
 config();
@@ -228,9 +229,7 @@ export async function runRepeatedTask<T>(
   return results;
 }
 
-function loopResultHasFailures(result: EvidenceLoopResult) {
-  return result.failureCount > 0;
-}
+export const loopResultNeedsAttention = evidenceLoopResultNeedsAttention;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -283,7 +282,7 @@ async function main() {
             iterations: options.iterations,
             collectResults: false,
             continueOnError: true,
-            isFailure: (result) => loopResultHasFailures(result),
+            isFailure: (result) => loopResultNeedsAttention(result),
             onError: async (error, iteration) => {
               console.error(JSON.stringify({ iteration, error: errorMessage(error) }, null, 2));
             },

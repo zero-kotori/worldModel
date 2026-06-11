@@ -1,4 +1,4 @@
-import { parseObserveArgs, runRepeatedTask } from "../../scripts/observe";
+import { loopResultNeedsAttention, parseObserveArgs, runRepeatedTask } from "../../scripts/observe";
 
 describe("observe CLI options", () => {
   it("bootstraps default sources for plain loop runs without an explicit source", () => {
@@ -137,6 +137,38 @@ describe("observe CLI options", () => {
     );
 
     expect(waits).toEqual([2000, 1000]);
+  });
+
+  it("treats a fully suppressed evidence loop as a failed repeat iteration", async () => {
+    const waits: number[] = [];
+    const outcomes = [
+      {
+        failureCount: 0,
+        sourceRunCount: 0,
+        skippedSourceCount: 1
+      },
+      {
+        failureCount: 0,
+        sourceRunCount: 1,
+        skippedSourceCount: 0
+      }
+    ];
+
+    await runRepeatedTask(
+      async (iteration) => outcomes[iteration - 1],
+      {
+        repeat: true,
+        iterations: 2,
+        intervalMs: 1000,
+        failureBackoffMultiplier: 2,
+        isFailure: loopResultNeedsAttention,
+        wait: async (ms) => {
+          waits.push(ms);
+        }
+      }
+    );
+
+    expect(waits).toEqual([2000]);
   });
 
   it("continues after task errors when configured and backs off before retrying", async () => {

@@ -1,4 +1,5 @@
 import type { AutomationWorkerConfigRecord, EvidenceLoopOptions, WorldModelServices } from "@/server/services/types";
+import { evidenceLoopResultAttentionMessage } from "@/server/automation/evidence-loop-result";
 
 type AutomationServices = Pick<WorldModelServices["automation"], "listWorkerConfigs" | "recordHeartbeat" | "runEvidenceLoop">;
 type TimerHandle = unknown;
@@ -109,10 +110,11 @@ export function createEvidenceLoopWorkerController(dependencies: WorkerControlle
 
     try {
       const result = await automation.runEvidenceLoop(state.loopOptions);
-      if (result.failureCount > 0) {
+      const attentionMessage = evidenceLoopResultAttentionMessage(result);
+      if (attentionMessage) {
         state.consecutiveFailureCount += 1;
         status = "ERROR";
-        lastError = "One or more source runs failed.";
+        lastError = attentionMessage;
       } else {
         state.consecutiveFailureCount = 0;
       }

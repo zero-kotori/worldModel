@@ -137,6 +137,69 @@ describe("local evidence loop worker", () => {
     expect(scheduled).toEqual([expect.objectContaining({ ms: 180_000 })]);
   });
 
+  it("backs off when every eligible source is skipped after repeated failures", async () => {
+    const heartbeats: Array<Parameters<Automation["recordHeartbeat"]>[0]> = [];
+    const scheduled: Array<{ ms: number; id: number }> = [];
+    const controller = createEvidenceLoopWorkerController({
+      now: () => new Date("2026-06-11T05:00:00.000Z"),
+      setTimer: (_callback, ms) => {
+        const id = scheduled.length + 1;
+        scheduled.push({ ms, id });
+        return id;
+      },
+      clearTimer: () => {}
+    });
+    const automation = createAutomation({
+      runEvidenceLoop: async () => ({
+        mode: "auto-apply",
+        queryCount: 1,
+        sourceRunCount: 0,
+        skippedSourceCount: 1,
+        skippedSources: [
+          {
+            sourceId: "source_flaky",
+            sourceName: "Flaky source",
+            reason: "CONSECUTIVE_FAILURES",
+            consecutiveFailureCount: 3,
+            latestError: "fetch failed"
+          }
+        ],
+        itemCount: 0,
+        deduplicatedCount: 0,
+        candidateCount: 0,
+        autoAppliedCount: 0,
+        reviewCount: 0,
+        failureCount: 0,
+        queries: [],
+        runs: []
+      }),
+      recordHeartbeat: async (input) => {
+        heartbeats.push(input);
+        return { ...input, createdAt: input.heartbeatAt, updatedAt: input.heartbeatAt };
+      }
+    });
+
+    await controller.start(
+      {
+        workerId: "default",
+        intervalMs: 60_000,
+        failureBackoffMultiplier: 2,
+        maxIntervalMs: 600_000,
+        loopOptions: {}
+      },
+      automation
+    );
+
+    expect(heartbeats.at(-1)).toMatchObject({
+      id: "default",
+      status: "ERROR",
+      nextRunAt: new Date("2026-06-11T05:02:00.000Z"),
+      consecutiveFailureCount: 1,
+      lastError: "All eligible sources were skipped after repeated failures."
+    });
+    expect(scheduled).toEqual([expect.objectContaining({ ms: 120_000 })]);
+  });
+
   it("stops a worker by clearing its timer and recording idle heartbeat", async () => {
     const cleared: number[] = [];
     const heartbeats: Array<Parameters<Automation["recordHeartbeat"]>[0]> = [];
