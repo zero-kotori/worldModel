@@ -57,10 +57,30 @@ export function getObservationRecommendedLinks(observation: ObservationRecord): 
   return links.map(toRecommendedLink).filter((link): link is RecommendedLink => Boolean(link));
 }
 
-export function groupObservationsForReview(observations: ObservationRecord[]) {
-  const reviewCandidates = observations.filter(
-    (observation) => observation.status === "PENDING" && getObservationRecommendedLinks(observation).length > 0
+export function observationReviewPriority(observation: ObservationRecord) {
+  const links = getObservationRecommendedLinks(observation);
+  if (links.length === 0) return 0;
+  return Math.max(
+    ...links.map((link) => Math.abs(Math.log(link.likelihoodRatio)) * link.relevance * link.confidence * observation.credibility)
   );
+}
+
+export function observationReviewPriorityLabel(score: number) {
+  if (score >= 0.35) return "高优先级";
+  if (score >= 0.12) return "中优先级";
+  return "低优先级";
+}
+
+function reviewCandidateSort(a: ObservationRecord, b: ObservationRecord) {
+  const priorityDelta = observationReviewPriority(b) - observationReviewPriority(a);
+  if (Math.abs(priorityDelta) > 0.000001) return priorityDelta;
+  return b.observedAt.getTime() - a.observedAt.getTime();
+}
+
+export function groupObservationsForReview(observations: ObservationRecord[]) {
+  const reviewCandidates = observations
+    .filter((observation) => observation.status === "PENDING" && getObservationRecommendedLinks(observation).length > 0)
+    .sort(reviewCandidateSort);
 
   return {
     unknown: observations.filter((observation) => observation.status === "UNKNOWN"),

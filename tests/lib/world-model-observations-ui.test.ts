@@ -1,6 +1,8 @@
 import {
   getObservationRecommendedLinks,
   groupObservationsForReview,
+  observationReviewPriority,
+  observationReviewPriorityLabel,
   observationStatusLabels
 } from "@/lib/world-model-observations-ui";
 import type { ObservationRecord } from "@/server/services/types";
@@ -82,5 +84,42 @@ describe("world model observations UI", () => {
         rationale: "Weakens the hypothesis"
       }
     ]);
+  });
+
+  it("prioritizes review candidates by likely belief impact", () => {
+    const lowImpact = observation("low-impact", "PENDING", {
+      recommendedLinks: [
+        {
+          hypothesisId: "hypothesis_low",
+          direction: "SUPPORTS",
+          relevance: 0.5,
+          likelihoodRatio: 1.1,
+          confidence: 0.5,
+          rationale: "Small update"
+        }
+      ]
+    });
+    lowImpact.credibility = 0.5;
+
+    const highImpact = observation("high-impact", "PENDING", {
+      recommendedLinks: [
+        {
+          hypothesisId: "hypothesis_high",
+          direction: "OPPOSES",
+          relevance: 0.9,
+          likelihoodRatio: 0.25,
+          confidence: 0.9,
+          rationale: "Large update"
+        }
+      ]
+    });
+    highImpact.credibility = 0.9;
+
+    const grouped = groupObservationsForReview([lowImpact, highImpact]);
+
+    expect(grouped.reviewCandidates.map((item) => item.id)).toEqual(["high-impact", "low-impact"]);
+    expect(observationReviewPriority(highImpact)).toBeGreaterThan(observationReviewPriority(lowImpact));
+    expect(observationReviewPriorityLabel(observationReviewPriority(highImpact))).toBe("高优先级");
+    expect(observationReviewPriorityLabel(observationReviewPriority(lowImpact))).toBe("低优先级");
   });
 });

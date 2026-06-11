@@ -10,6 +10,8 @@ import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import {
   getObservationRecommendedLinks,
   groupObservationsForReview,
+  observationReviewPriority,
+  observationReviewPriorityLabel,
   observationStatusLabels
 } from "@/lib/world-model-observations-ui";
 import { evidenceDirectionLabels } from "@/lib/world-model-navigation";
@@ -75,6 +77,7 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
                 <tr>
                   <th className="px-3 py-2">编号</th>
                   <th className="px-3 py-2">标题</th>
+                  <th className="px-3 py-2">优先级</th>
                   <th className="px-3 py-2">推荐关联</th>
                   <th className="px-3 py-2">原因</th>
                   <th className="px-3 py-2">操作</th>
@@ -84,10 +87,15 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
                 {groupedObservations.reviewCandidates.map((observation) => {
                   const code = readableCode(observationCodes, observation.id, "O");
                   const links = getObservationRecommendedLinks(observation);
+                  const priority = observationReviewPriority(observation);
                   return (
                     <tr key={observation.id} className="border-t border-line align-top">
                       <td className="px-3 py-2 font-mono text-xs">{code}</td>
                       <td className="px-3 py-2">{observation.title}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-semibold text-ink">{observationReviewPriorityLabel(priority)}</div>
+                        <div className="mt-1 text-xs text-ink/50">{priority.toFixed(2)}</div>
+                      </td>
                       <td className="px-3 py-2">
                         <div className="grid gap-2">
                           {links.map((link) => {
