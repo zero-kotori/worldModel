@@ -265,6 +265,20 @@ function automationDiagnostics(input: {
     input.latestRun &&
     input.latestRun.status !== "FAILED" &&
     input.latestRun.queryCount > 0 &&
+    input.latestRun.itemCount === 0
+  ) {
+    diagnostics.push({
+      level: "info",
+      title: "未采集观察",
+      detail: "最近运行生成了检索任务，但来源没有返回可入库观察。"
+    });
+  }
+
+  if (
+    input.latestRun &&
+    input.latestRun.status !== "FAILED" &&
+    input.latestRun.queryCount > 0 &&
+    input.latestRun.itemCount > 0 &&
     input.latestRun.candidateCount === 0
   ) {
     diagnostics.push({
@@ -328,6 +342,12 @@ function automationNextActions(diagnostics: AutomationDiagnostic[]): AutomationN
       addNextAction(actions, {
         label: "调整信念假设",
         href: "/admin/world-model/beliefs"
+      });
+    }
+    if (diagnostic.title === "未采集观察") {
+      addNextAction(actions, {
+        label: "调整采集来源",
+        href: "/admin/world-model/sources#source-list"
       });
     }
     if (diagnostic.title === "守护进程心跳过期") {

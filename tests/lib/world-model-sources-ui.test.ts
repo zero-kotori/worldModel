@@ -365,5 +365,27 @@ describe("world model sources UI", () => {
       label: "处理待审候选",
       href: "/admin/world-model/observations"
     });
+
+    const emptyCollectionHealth = summarizeAutomationHealth([
+      run({
+        id: "empty-query-run",
+        sourceId: "source_1",
+        status: "SUCCESS",
+        startedAt: new Date("2026-06-11T04:00:00.000Z"),
+        queryCount: 2,
+        itemCount: 0,
+        candidateCount: 0
+      })
+    ]);
+    expect(emptyCollectionHealth.diagnostics).toContainEqual({
+      level: "info",
+      title: "未采集观察",
+      detail: "最近运行生成了检索任务，但来源没有返回可入库观察。"
+    });
+    expect(emptyCollectionHealth.diagnostics.map((diagnostic) => diagnostic.title)).not.toContain("未识别候选证据");
+    expect(emptyCollectionHealth.nextActions).toContainEqual({
+      label: "调整采集来源",
+      href: "/admin/world-model/sources#source-list"
+    });
   });
 });
