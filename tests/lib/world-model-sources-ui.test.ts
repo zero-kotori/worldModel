@@ -297,6 +297,38 @@ describe("world model sources UI", () => {
       href: "/admin/world-model/sources#recommended-sources"
     });
 
+    const noBeliefHealth = summarizeAutomationHealth([], [], {
+      sourceCount: 1,
+      enabledSourceCount: 1,
+      activeBeliefCount: 0,
+      activeHypothesisCount: 0
+    });
+    expect(noBeliefHealth.diagnostics).toContainEqual({
+      level: "warning",
+      title: "缺少活跃信念",
+      detail: "创建至少一个活跃信念表后，闭环才能生成检索任务。"
+    });
+    expect(noBeliefHealth.nextActions).toContainEqual({
+      label: "创建信念表",
+      href: "/admin/world-model/beliefs"
+    });
+
+    const noHypothesisHealth = summarizeAutomationHealth([], [], {
+      sourceCount: 1,
+      enabledSourceCount: 1,
+      activeBeliefCount: 1,
+      activeHypothesisCount: 0
+    });
+    expect(noHypothesisHealth.diagnostics).toContainEqual({
+      level: "warning",
+      title: "缺少活跃假设",
+      detail: "为活跃信念表添加假设后，闭环才能评估证据并更新概率。"
+    });
+    expect(noHypothesisHealth.nextActions).toContainEqual({
+      label: "补充假设",
+      href: "/admin/world-model/beliefs"
+    });
+
     const fetchFailedHealth = summarizeAutomationHealth([
       run({
         id: "failed-run",

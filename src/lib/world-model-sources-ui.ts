@@ -23,6 +23,8 @@ type AutomationHealthOptions =
       workerRuntime?: AutomationWorkerRuntime[];
       sourceCount?: number;
       enabledSourceCount?: number;
+      activeBeliefCount?: number;
+      activeHypothesisCount?: number;
     };
 type AutomationWorkerSummary = {
   id?: string;
@@ -174,13 +176,22 @@ function summarizeWorker(
 
 function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
   if (options instanceof Date) {
-    return { referenceTime: options, workerRuntime: [], sourceCount: undefined, enabledSourceCount: undefined };
+    return {
+      referenceTime: options,
+      workerRuntime: [],
+      sourceCount: undefined,
+      enabledSourceCount: undefined,
+      activeBeliefCount: undefined,
+      activeHypothesisCount: undefined
+    };
   }
   return {
     referenceTime: options?.referenceTime ?? new Date(),
     workerRuntime: options?.workerRuntime ?? [],
     sourceCount: options?.sourceCount,
-    enabledSourceCount: options?.enabledSourceCount
+    enabledSourceCount: options?.enabledSourceCount,
+    activeBeliefCount: options?.activeBeliefCount,
+    activeHypothesisCount: options?.activeHypothesisCount
   };
 }
 
@@ -191,6 +202,8 @@ function isFetchFailure(message: string) {
 function automationDiagnostics(input: {
   sourceCount?: number;
   enabledSourceCount?: number;
+  activeBeliefCount?: number;
+  activeHypothesisCount?: number;
   latestRun?: ObservationRunRecord;
   latestFailedRun?: ObservationRunRecord;
   worker: AutomationWorkerSummary;
@@ -208,6 +221,20 @@ function automationDiagnostics(input: {
       level: "warning",
       title: "没有启用来源",
       detail: "启用至少一个非手动来源后，闭环才能自动采集。"
+    });
+  }
+
+  if (input.activeBeliefCount === 0) {
+    diagnostics.push({
+      level: "warning",
+      title: "缺少活跃信念",
+      detail: "创建至少一个活跃信念表后，闭环才能生成检索任务。"
+    });
+  } else if (input.activeHypothesisCount === 0) {
+    diagnostics.push({
+      level: "warning",
+      title: "缺少活跃假设",
+      detail: "为活跃信念表添加假设后，闭环才能评估证据并更新概率。"
     });
   }
 
@@ -273,6 +300,18 @@ function automationNextActions(diagnostics: AutomationDiagnostic[]): AutomationN
         href: "/admin/world-model/sources#recommended-sources"
       });
     }
+    if (diagnostic.title === "缺少活跃信念") {
+      addNextAction(actions, {
+        label: "创建信念表",
+        href: "/admin/world-model/beliefs"
+      });
+    }
+    if (diagnostic.title === "缺少活跃假设") {
+      addNextAction(actions, {
+        label: "补充假设",
+        href: "/admin/world-model/beliefs"
+      });
+    }
     if (diagnostic.title === "来源抓取失败") {
       addNextAction(actions, {
         label: "检查来源配置",
@@ -317,7 +356,8 @@ export function summarizeAutomationHealth(
   diagnostics: AutomationDiagnostic[];
   nextActions: AutomationNextAction[];
 } {
-  const { referenceTime, workerRuntime, sourceCount, enabledSourceCount } = normalizeHealthOptions(options);
+  const { referenceTime, workerRuntime, sourceCount, enabledSourceCount, activeBeliefCount, activeHypothesisCount } =
+    normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
   const latestRun = orderedRuns[0];
   const worker = summarizeWorker(heartbeats, referenceTime, workerRuntime);
@@ -325,6 +365,8 @@ export function summarizeAutomationHealth(
   const diagnostics = automationDiagnostics({
     sourceCount,
     enabledSourceCount,
+    activeBeliefCount,
+    activeHypothesisCount,
     latestRun,
     latestFailedRun,
     worker

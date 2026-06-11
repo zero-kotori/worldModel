@@ -68,10 +68,16 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
   const sourcePresets = listSourcePresets(data.sources);
   const automationSources = data.sources.filter((source) => source.kind !== "MANUAL");
+  const activeBeliefs = data.beliefs.filter((belief) => belief.status === "ACTIVE");
   const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, {
     workerRuntime: data.workerRuntime,
     sourceCount: automationSources.length,
-    enabledSourceCount: automationSources.filter((source) => source.enabled).length
+    enabledSourceCount: automationSources.filter((source) => source.enabled).length,
+    activeBeliefCount: activeBeliefs.length,
+    activeHypothesisCount: activeBeliefs.reduce(
+      (count, belief) => count + belief.hypotheses.filter((hypothesis) => hypothesis.status === "ACTIVE").length,
+      0
+    )
   });
   const workerConfig = data.workerConfigs[0] ?? fallbackWorkerConfig();
   const stopWorkerId =
