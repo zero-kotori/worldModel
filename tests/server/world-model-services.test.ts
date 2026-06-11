@@ -800,6 +800,105 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.4);
   });
 
+  it("keeps LLM semantic fallback candidates even when a weak lexical candidate exists", async () => {
+    const scoredHypotheses: string[] = [];
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>Zettelkasten workflow improves recall</title></head><body>A durable note network helped the team retrieve prior decisions and refine weekly commitments.</body></html>"
+      },
+      likelihoodEstimator: {
+        name: "llm",
+        estimate: async (input) => {
+          scoredHypotheses.push(input.hypothesis);
+          if (input.hypothesis.includes("个人知识系统")) {
+            return {
+              estimator: "llm",
+              direction: "SUPPORTS",
+              relevance: 0.84,
+              likelihoodRatio: 2.5,
+              confidence: 0.8,
+              weight: 3,
+              rationale: "The note network evidence supports the personal knowledge system hypothesis.",
+              modelVersion: "deepseek:deepseek-chat",
+              abstain: false
+            };
+          }
+          return {
+            estimator: "llm",
+            direction: "NEUTRAL",
+            relevance: 0.08,
+            likelihoodRatio: 1,
+            confidence: 0.72,
+            weight: 3,
+            rationale: "The lexical overlap is incidental and not evidence for weekly commitments.",
+            modelVersion: "deepseek:deepseek-chat",
+            abstain: false
+          };
+        }
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "Execution rituals",
+      category: "CAREER",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "Weekly commitments are the strongest predictor of career growth",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const semanticBelief = await services.beliefs.createBelief({
+      title: "长期职业杠杆",
+      category: "CAREER",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "建立可复用的个人知识系统会提升长期决策质量",
+          priorProbability: 0.4,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Knowledge workflow page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/knowledge-workflow-shadowed",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.7
+    });
+
+    const run = await services.sources.runSource(source.id, { candidateThreshold: 0.25 });
+    const evidence = await services.evidence.listEvidence();
+    const updatedBelief = await services.beliefs.getBelief(semanticBelief.id);
+
+    expect(scoredHypotheses).toEqual(
+      expect.arrayContaining([
+        "Weekly commitments are the strongest predictor of career growth",
+        "建立可复用的个人知识系统会提升长期决策质量"
+      ])
+    );
+    expect(run.candidateCount).toBe(1);
+    expect(run.autoAppliedCount).toBe(1);
+    expect(evidence[0].links[0]).toMatchObject({
+      hypothesisId: semanticBelief.hypotheses[0].id,
+      relevance: 0.84,
+      likelihoodRatio: 2.5,
+      confidence: 0.8
+    });
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.4);
+  });
+
   it("auto-links one source observation to multiple hypotheses under the same belief", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {

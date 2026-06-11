@@ -816,7 +816,11 @@ export function createWorldModelServices(
     const lexicalMatches = ranked.filter((candidate) => candidate.score >= threshold);
 
     if (options.likelihoodEstimator) {
-      const llmCandidates = lexicalMatches.length > 0 ? lexicalMatches : ranked.slice(0, LLM_FALLBACK_CANDIDATE_LIMIT);
+      const lexicalHypothesisIds = new Set(lexicalMatches.map((candidate) => candidate.hypothesis.id));
+      const fallbackCandidates = ranked
+        .filter((candidate) => !lexicalHypothesisIds.has(candidate.hypothesis.id))
+        .slice(0, LLM_FALLBACK_CANDIDATE_LIMIT);
+      const llmCandidates = [...lexicalMatches, ...fallbackCandidates];
       const llmLinks: Array<{
         belief: (typeof llmCandidates)[number]["belief"];
         score: number;
