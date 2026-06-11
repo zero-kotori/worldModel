@@ -47,7 +47,8 @@ function successfulRun(run: ObservationRunRecord) {
 }
 
 function latestHeartbeat(heartbeats: AutomationHeartbeatRecord[]) {
-  return [...heartbeats].sort((a, b) => b.heartbeatAt.getTime() - a.heartbeatAt.getTime())[0];
+  const ordered = [...heartbeats].sort((a, b) => b.heartbeatAt.getTime() - a.heartbeatAt.getTime());
+  return ordered.find((heartbeat) => heartbeat.status !== "IDLE") ?? ordered[0];
 }
 
 function isHeartbeatStale(heartbeat: AutomationHeartbeatRecord, referenceTime: Date) {

@@ -219,4 +219,33 @@ describe("world model sources UI", () => {
       nextRunAt: new Date("2026-06-11T04:15:00.000Z")
     });
   });
+
+  it("prefers a non-idle automation worker over a newer idle smoke worker", () => {
+    const health = summarizeAutomationHealth(
+      [],
+      [
+        heartbeat({
+          id: "default",
+          status: "RUNNING",
+          heartbeatAt: new Date("2026-06-11T04:00:00.000Z"),
+          nextRunAt: new Date("2026-06-11T04:15:00.000Z"),
+          intervalMs: 900_000
+        }),
+        heartbeat({
+          id: "smoke",
+          status: "IDLE",
+          heartbeatAt: new Date("2026-06-11T04:05:00.000Z"),
+          intervalMs: 0
+        })
+      ],
+      new Date("2026-06-11T04:10:00.000Z")
+    );
+
+    expect(health.worker).toMatchObject({
+      id: "default",
+      status: "RUNNING",
+      label: "运行中",
+      tone: "healthy"
+    });
+  });
 });
