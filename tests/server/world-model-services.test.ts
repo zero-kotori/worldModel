@@ -428,6 +428,72 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("continues an evidence loop when one enabled source fails and another succeeds", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async (url) => {
+          if (url.includes("bad-source")) {
+            throw new Error("Source endpoint unavailable");
+          }
+          return "<html><head><title>AI agents accelerate engineering teams</title></head><body>AI agents accelerate engineering teams by handling routine implementation work.</body></html>";
+        }
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "Track agent adoption.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "enterprise rollout"
+        }
+      ]
+    });
+    await services.sources.createSource({
+      name: "Bad source",
+      kind: "WEB_PAGE",
+      url: "https://example.com/bad-source",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+    await services.sources.createSource({
+      name: "Good source",
+      kind: "WEB_PAGE",
+      url: "https://example.com/good-source",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+
+    const loop = await services.automation.runEvidenceLoop({
+      reviewOnly: true,
+      maxObservations: 1,
+      autoConfirmThreshold: 0.2
+    });
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+    const observations = await services.observations.listObservations();
+
+    expect(loop.sourceRunCount).toBe(2);
+    expect(loop.failureCount).toBe(1);
+    expect(loop.candidateCount).toBe(1);
+    expect(loop.reviewCount).toBe(1);
+    expect(loop.runs.map((run) => run.status)).toEqual(expect.arrayContaining(["FAILED", "REVIEW_ONLY"]));
+    expect(loop.runs.find((run) => run.status === "FAILED")?.errorMessage).toContain("Source endpoint unavailable");
+    expect(observations).toHaveLength(1);
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
+  });
+
   it("moves unmatched source observations into the unknown evidence queue", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {

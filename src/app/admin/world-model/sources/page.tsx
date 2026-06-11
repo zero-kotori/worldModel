@@ -8,6 +8,7 @@ import {
 } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
+import { getLatestSourceRun, runErrorSummary, sourceHealthLabel } from "@/lib/world-model-sources-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
 
@@ -117,21 +118,32 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                 <tr>
                   <th className="px-3 py-2">名称</th>
                   <th className="px-3 py-2">类型</th>
+                  <th className="px-3 py-2">启用</th>
+                  <th className="px-3 py-2">自动确认</th>
+                  <th className="px-3 py-2">最近状态</th>
+                  <th className="px-3 py-2">错误</th>
                   <th className="px-3 py-2">凭据引用</th>
                   <th className="px-3 py-2">可信度</th>
                   <th className="px-3 py-2">编号</th>
                 </tr>
               </thead>
               <tbody>
-                {data.sources.map((source) => (
-                  <tr key={source.id} className="border-t border-line">
-                    <td className="px-3 py-2">{source.name}</td>
-                    <td className="px-3 py-2">{source.kind}</td>
-                    <td className="px-3 py-2">{source.credentialRef ?? ""}</td>
-                    <td className="px-3 py-2">{source.credibility.toFixed(2)}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{readableCode(sourceCodes, source.id, "S")}</td>
-                  </tr>
-                ))}
+                {data.sources.map((source) => {
+                  const latestRun = getLatestSourceRun(source.id, data.runs);
+                  return (
+                    <tr key={source.id} className="border-t border-line">
+                      <td className="px-3 py-2">{source.name}</td>
+                      <td className="px-3 py-2">{source.kind}</td>
+                      <td className="px-3 py-2">{source.enabled ? "是" : "否"}</td>
+                      <td className="px-3 py-2">{source.autoConfirm ? "是" : "否"}</td>
+                      <td className="px-3 py-2">{sourceHealthLabel(source, latestRun)}</td>
+                      <td className="max-w-xs px-3 py-2 text-xs text-berry">{runErrorSummary(latestRun)}</td>
+                      <td className="px-3 py-2">{source.credentialRef ?? ""}</td>
+                      <td className="px-3 py-2">{source.credibility.toFixed(2)}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{readableCode(sourceCodes, source.id, "S")}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -154,6 +166,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                   <th className="px-3 py-2">候选</th>
                   <th className="px-3 py-2">自动应用</th>
                   <th className="px-3 py-2">待审</th>
+                  <th className="px-3 py-2">错误</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,6 +181,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                     <td className="px-3 py-2">{run.candidateCount}</td>
                     <td className="px-3 py-2">{run.autoAppliedCount}</td>
                     <td className="px-3 py-2">{run.reviewCount}</td>
+                    <td className="max-w-xs px-3 py-2 text-xs text-berry">{runErrorSummary(run)}</td>
                   </tr>
                 ))}
               </tbody>

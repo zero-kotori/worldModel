@@ -98,23 +98,36 @@ function createFetchAdapter(kind: ObservationSourceKind, dependencies: AdapterDe
       if (!source.url) return [];
       const sourceUrl = source.url;
       const queries = source.queries?.filter(Boolean) ?? [];
+      const querySource = sourceUrl.includes("{query}");
       const urls =
-        sourceUrl.includes("{query}") && queries.length > 0
+        querySource && queries.length > 0
           ? queries.map((query) => ({ url: sourceUrl.replaceAll("{query}", encodeURIComponent(query)), query }))
-          : sourceUrl.includes("{query}")
+          : querySource
             ? []
             : [{ url: sourceUrl, query: undefined }];
-      return Promise.all(
-        urls.map(async (item) => {
-          const text = await fetchText(item.url);
-          return {
-            title: titleFromHtml(text) ?? source.name,
-            content: stripHtml(text),
-            url: item.url,
-            sourceMetadata: { adapter: kind, query: item.query }
-          };
-        })
-      );
+      const fetchOne = async (item: (typeof urls)[number]): Promise<RawObservation> => {
+        const text = await fetchText(item.url);
+        return {
+          title: titleFromHtml(text) ?? source.name,
+          content: stripHtml(text),
+          url: item.url,
+          sourceMetadata: { adapter: kind, query: item.query }
+        };
+      };
+
+      if (!querySource) {
+        return Promise.all(urls.map(fetchOne));
+      }
+
+      const results = await Promise.allSettled(urls.map(fetchOne));
+      const observations = results
+        .filter((result): result is PromiseFulfilledResult<RawObservation> => result.status === "fulfilled")
+        .map((result) => result.value);
+      if (observations.length > 0 || urls.length === 0) return observations;
+
+      const firstError = results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
+      const reason = firstError instanceof Error ? firstError.message : String(firstError);
+      throw new Error(`All ${urls.length} query fetches failed for ${source.name}: ${reason}`);
     }
   };
 }

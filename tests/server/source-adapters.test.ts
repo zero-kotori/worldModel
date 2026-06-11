@@ -38,6 +38,50 @@ describe("observation source adapters", () => {
     ]);
   });
 
+  it("keeps successful query observations when one query URL fails", async () => {
+    const adapter = createSourceAdapter("SEARCH", {
+      fetchText: async (url) => {
+        if (url.includes("bad-query")) {
+          throw new Error("Search backend timeout");
+        }
+        return "<html><head><title>Good query result</title></head><body>AI agents adoption evidence</body></html>";
+      }
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "Search",
+        adapter: "search",
+        url: "https://example.com/search?q={query}",
+        queries: ["bad-query", "good-query"]
+      })
+    ).resolves.toEqual([
+      {
+        title: "Good query result",
+        content: "AI agents adoption evidence",
+        url: "https://example.com/search?q=good-query",
+        sourceMetadata: { adapter: "SEARCH", query: "good-query" }
+      }
+    ]);
+  });
+
+  it("fails a query source only when every query URL fails", async () => {
+    const adapter = createSourceAdapter("SEARCH", {
+      fetchText: async () => {
+        throw new Error("Search backend timeout");
+      }
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "Search",
+        adapter: "search",
+        url: "https://example.com/search?q={query}",
+        queries: ["first", "second"]
+      })
+    ).rejects.toThrow("All 2 query fetches failed");
+  });
+
   it("keeps unsupported or credential-bound social adapters as auditable dry-run stubs", async () => {
     const adapter = createSourceAdapter("SOCIAL");
 
