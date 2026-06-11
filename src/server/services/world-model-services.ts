@@ -46,6 +46,7 @@ import type {
 
 const probabilitySchema = z.number().finite().min(0).max(1);
 const DEFAULT_CANDIDATE_THRESHOLD = 0.25;
+const LLM_FALLBACK_CANDIDATE_LIMIT = 5;
 
 const createBeliefSchema = z.object({
   title: z.string().trim().min(1, "Belief title is required"),
@@ -810,17 +811,20 @@ export function createWorldModelServices(
             return { belief, hypothesis, score };
           })
       )
-      .filter((candidate) => candidate.score >= threshold)
       .sort((a, b) => b.score - a.score);
 
-    const best = ranked[0];
-    if (!best) return [];
+    const lexicalMatches = ranked.filter((candidate) => candidate.score >= threshold);
 
-    const selected = ranked.filter((candidate) => candidate.belief.id === best.belief.id);
-    const links: ConfirmEvidenceInput["links"] = [];
+    if (options.likelihoodEstimator) {
+      const llmCandidates = lexicalMatches.length > 0 ? lexicalMatches : ranked.slice(0, LLM_FALLBACK_CANDIDATE_LIMIT);
+      const llmLinks: Array<{
+        belief: (typeof llmCandidates)[number]["belief"];
+        score: number;
+        link: ConfirmEvidenceInput["links"][number];
+      }> = [];
+      let sawUsableOutput = false;
 
-    for (const candidate of selected) {
-      if (options.likelihoodEstimator) {
+      for (const candidate of llmCandidates) {
         const output = await options.likelihoodEstimator.estimate({
           evidenceText: `${observation.title}\n${observation.content}`,
           hypothesis: candidate.hypothesis.proposition,
@@ -829,21 +833,42 @@ export function createWorldModelServices(
           context: `${candidate.belief.title}\n${candidate.belief.description}\n${candidate.hypothesis.notes}`
         });
 
-        if (isUsableEstimatorOutput(output)) {
-          links.push({
+        if (!isUsableEstimatorOutput(output)) continue;
+        sawUsableOutput = true;
+        const relevance = output.relevance ?? candidate.score;
+        if (relevance < threshold) continue;
+
+        llmLinks.push({
+          belief: candidate.belief,
+          score: relevance,
+          link: {
             hypothesisId: candidate.hypothesis.id,
             direction: estimatorDirection(output),
-            relevance: output.relevance ?? Math.min(1, Math.max(0.1, candidate.score)),
+            relevance,
             likelihoodRatio: output.likelihoodRatio ?? 1,
             confidence: output.confidence ?? 0.1,
             rationale:
               output.rationale ??
               `LLM 自动关联到「${candidate.belief.title}」下的假设：${candidate.hypothesis.proposition}`
-          });
-          continue;
-        }
+          }
+        });
       }
 
+      const sortedLlmLinks = llmLinks.sort((a, b) => b.score - a.score || b.link.confidence - a.link.confidence);
+      const bestLlmLink = sortedLlmLinks[0];
+      if (bestLlmLink) {
+        return sortedLlmLinks.filter((candidate) => candidate.belief.id === bestLlmLink.belief.id).map((candidate) => candidate.link);
+      }
+      if (sawUsableOutput || lexicalMatches.length === 0) return [];
+    }
+
+    const best = lexicalMatches[0];
+    if (!best) return [];
+
+    const selected = lexicalMatches.filter((candidate) => candidate.belief.id === best.belief.id);
+    const links: ConfirmEvidenceInput["links"] = [];
+
+    for (const candidate of selected) {
       links.push({
         hypothesisId: candidate.hypothesis.id,
         direction: "SUPPORTS",

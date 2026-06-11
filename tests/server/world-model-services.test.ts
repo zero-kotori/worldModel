@@ -733,6 +733,73 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.35);
   });
 
+  it("uses the LLM scorer to recover semantic candidates that lexical matching would miss", async () => {
+    let estimateCalls = 0;
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>Zettelkasten workflow improves recall</title></head><body>A durable note network helped the team retrieve prior decisions and refine weekly commitments.</body></html>"
+      },
+      likelihoodEstimator: {
+        name: "llm",
+        estimate: async () => {
+          estimateCalls += 1;
+          return {
+            estimator: "llm",
+            direction: "SUPPORTS",
+            relevance: 0.82,
+            likelihoodRatio: 2.4,
+            confidence: 0.78,
+            weight: 3,
+            rationale: "The evidence semantically supports building a reusable personal knowledge system.",
+            modelVersion: "deepseek:deepseek-chat",
+            abstain: false
+          };
+        }
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "长期职业杠杆",
+      category: "CAREER",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "建立可复用的个人知识系统会提升长期决策质量",
+          priorProbability: 0.4,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Knowledge workflow page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/knowledge-workflow",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.7
+    });
+
+    const run = await services.sources.runSource(source.id, { candidateThreshold: 0.25 });
+    const evidence = await services.evidence.listEvidence();
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+
+    expect(estimateCalls).toBe(1);
+    expect(run.candidateCount).toBe(1);
+    expect(run.autoAppliedCount).toBe(1);
+    expect(evidence[0].links[0]).toMatchObject({
+      hypothesisId: belief.hypotheses[0].id,
+      relevance: 0.82,
+      likelihoodRatio: 2.4,
+      confidence: 0.78
+    });
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.4);
+  });
+
   it("auto-links one source observation to multiple hypotheses under the same belief", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {
