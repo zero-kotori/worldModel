@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { getWorldModelServices } from "@/server/services";
+import { getEvidenceLoopWorkerController } from "@/server/automation/local-worker";
 import { readEvidenceLinksFromFormData } from "@/lib/world-model-evidence-ui";
 import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import type { BeliefCategory, HypothesisStance, ObservationSourceKind } from "@/server/services/types";
@@ -338,6 +339,36 @@ export async function runEvidenceLoopAction(formData: FormData) {
       bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
       forceAutoApply: bool(formData, "forceAutoApply")
     });
+  });
+}
+
+export async function startEvidenceLoopWorkerAction(formData: FormData) {
+  await runAction("/admin/world-model/sources", "本地守护进程已启动", async () => {
+    const services = getWorldModelServices();
+    await getEvidenceLoopWorkerController().start(
+      {
+        workerId: text(formData, "workerId") || "default",
+        intervalMs: number(formData, "intervalSeconds", 900) * 1000,
+        failureBackoffMultiplier: number(formData, "failureBackoffMultiplier", 2),
+        maxIntervalMs: number(formData, "maxIntervalSeconds", 3600) * 1000,
+        loopOptions: {
+          reviewOnly: bool(formData, "reviewOnly"),
+          maxObservations: optionalNumber(formData, "maxObservations"),
+          candidateThreshold: optionalNumber(formData, "candidateThreshold"),
+          autoConfirmThreshold: optionalNumber(formData, "autoConfirmThreshold"),
+          bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
+          forceAutoApply: bool(formData, "forceAutoApply")
+        }
+      },
+      services.automation
+    );
+  });
+}
+
+export async function stopEvidenceLoopWorkerAction(formData: FormData) {
+  await runAction("/admin/world-model/sources", "本地守护进程已停止", async () => {
+    const services = getWorldModelServices();
+    await getEvidenceLoopWorkerController().stop(text(formData, "workerId") || "default", services.automation);
   });
 }
 

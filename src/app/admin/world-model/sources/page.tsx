@@ -5,7 +5,9 @@ import {
   runEvidenceLoopAction,
   runSourceAction,
   runSourceDryRunAction,
-  runSourceReviewOnlyAction
+  runSourceReviewOnlyAction,
+  startEvidenceLoopWorkerAction,
+  stopEvidenceLoopWorkerAction
 } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
@@ -202,6 +204,35 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             <Play size={16} /> 运行闭环
           </button>
         </form>
+        <div className="mt-3 grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-[1fr_auto]">
+          <form action={startEvidenceLoopWorkerAction} className="grid gap-3 lg:grid-cols-5">
+            <Field label="Worker" name="workerId" defaultValue="default" required />
+            <Field label="间隔秒" name="intervalSeconds" type="number" min="60" defaultValue="900" />
+            <Field label="最大观察" name="maxObservations" type="number" min="1" defaultValue="20" />
+            <Field label="候选阈值" name="candidateThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.25" />
+            <Field label="应用阈值" name="autoConfirmThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.85" />
+            <Field label="失败退避" name="failureBackoffMultiplier" type="number" step="0.1" min="1" defaultValue="2" />
+            <Field label="最长间隔秒" name="maxIntervalSeconds" type="number" min="60" defaultValue="3600" />
+            <label className="flex items-center gap-2 text-sm text-ink/70">
+              <input name="reviewOnly" type="checkbox" defaultChecked /> 仅生成待审
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink/70">
+              <input name="bootstrapDefaultSources" type="checkbox" defaultChecked /> 补齐推荐来源
+            </label>
+            <label className="flex items-center gap-2 text-sm text-ink/70">
+              <input name="forceAutoApply" type="checkbox" /> 自动应用
+            </label>
+            <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white lg:col-span-2">
+              <Play size={16} /> 启动守护进程
+            </button>
+          </form>
+          <form action={stopEvidenceLoopWorkerAction} className="grid content-end gap-3">
+            <Field label="Worker" name="workerId" defaultValue={automationHealth.worker.id ?? "default"} required />
+            <button className="inline-flex min-h-9 items-center justify-center rounded-md border border-line px-3 text-sm font-semibold text-ink">
+              停止
+            </button>
+          </form>
+        </div>
       </PageSection>
       <PageSection title="来源列表">
         {data.sources.length === 0 ? (
