@@ -14,7 +14,7 @@ import {
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { listSourcePresets } from "@/lib/world-model-source-presets";
-import { getLatestSourceRun, runErrorSummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
+import { getLatestSourceRun, runErrorSummary, runQuerySummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
 
@@ -393,6 +393,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                   <th className="px-3 py-2">采集</th>
                   <th className="px-3 py-2">去重</th>
                   <th className="px-3 py-2">查询</th>
+                  <th className="px-3 py-2">查询摘要</th>
                   <th className="px-3 py-2">候选</th>
                   <th className="px-3 py-2">自动应用</th>
                   <th className="px-3 py-2">待审</th>
@@ -408,6 +409,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                     <td className="px-3 py-2">{run.itemCount}</td>
                     <td className="px-3 py-2">{run.deduplicatedCount}</td>
                     <td className="px-3 py-2">{run.queryCount}</td>
+                    <td className="max-w-sm px-3 py-2 text-xs text-ink/70">{runQuerySummary(run)}</td>
                     <td className="px-3 py-2">{run.candidateCount}</td>
                     <td className="px-3 py-2">{run.autoAppliedCount}</td>
                     <td className="px-3 py-2">{run.reviewCount}</td>

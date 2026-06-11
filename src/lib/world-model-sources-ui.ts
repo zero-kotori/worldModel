@@ -63,6 +63,14 @@ export function runErrorSummary(run?: ObservationRunRecord) {
   return truncateErrorMessage(run?.errorMessage);
 }
 
+export function runQuerySummary(run?: ObservationRunRecord) {
+  const firstQuery = run?.querySummary[0]?.query.trim();
+  if (!firstQuery) return "";
+  const summary = firstQuery.length > 80 ? `${firstQuery.slice(0, 78)}...` : firstQuery;
+  const remaining = Math.max((run?.querySummary.length ?? 0) - 1, 0);
+  return remaining > 0 ? `${summary} +${remaining}` : summary;
+}
+
 function sortedRuns(runs: ObservationRunRecord[]) {
   return [...runs].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
 }

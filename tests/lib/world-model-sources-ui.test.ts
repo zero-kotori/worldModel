@@ -1,4 +1,4 @@
-import { getLatestSourceRun, runErrorSummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
+import { getLatestSourceRun, runErrorSummary, runQuerySummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
 import type { AutomationHeartbeatRecord, ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
 
 function source(id: string, enabled = true): ObservationSourceRecord {
@@ -95,6 +95,56 @@ describe("world model sources UI", () => {
 
     expect(message).toHaveLength(121);
     expect(message.endsWith("...")).toBe(true);
+  });
+
+  it("summarizes run query details for table display", () => {
+    expect(runQuerySummary(run({ id: "no-query", sourceId: "source_1", status: "SUCCESS", startedAt: new Date() }))).toBe("");
+
+    expect(
+      runQuerySummary(
+        run({
+          id: "query-run",
+          sourceId: "source_1",
+          status: "SUCCESS",
+          startedAt: new Date(),
+          queryCount: 2,
+          querySummary: [
+            {
+              beliefId: "belief_1",
+              hypothesisId: "hypothesis_1",
+              category: "CAREER",
+              query: "Remote AI product roles grow with market demand"
+            },
+            {
+              beliefId: "belief_2",
+              hypothesisId: "hypothesis_2",
+              category: "AI_TREND",
+              query: "AI agents accelerate engineering teams"
+            }
+          ]
+        })
+      )
+    ).toBe("Remote AI product roles grow with market demand +1");
+
+    expect(
+      runQuerySummary(
+        run({
+          id: "long-query-run",
+          sourceId: "source_1",
+          status: "SUCCESS",
+          startedAt: new Date(),
+          queryCount: 1,
+          querySummary: [
+            {
+              beliefId: "belief_1",
+              hypothesisId: "hypothesis_1",
+              category: "AI_TREND",
+              query: "x".repeat(120)
+            }
+          ]
+        })
+      )
+    ).toHaveLength(81);
   });
 
   it("summarizes idle automation health without run records", () => {
