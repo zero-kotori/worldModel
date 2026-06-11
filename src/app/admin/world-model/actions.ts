@@ -349,7 +349,8 @@ export async function runEvidenceLoopAction(formData: FormData) {
       reviewOnly: bool(formData, "reviewOnly"),
       maxObservations: number(formData, "maxObservations") || undefined,
       autoConfirmThreshold: number(formData, "autoConfirmThreshold") || undefined,
-      bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources")
+      bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
+      forceAutoApply: bool(formData, "forceAutoApply")
     });
   });
 }

@@ -154,6 +154,7 @@ export type ObservationRunRecord = {
 
 export type RunSourceOptions = {
   reviewOnly?: boolean;
+  forceAutoApply?: boolean;
   autoConfirmThreshold?: number;
   maxObservations?: number;
   queries?: EvidenceLoopQuery[];
@@ -173,6 +174,7 @@ export type EvidenceLoopOptions = {
   autoConfirmThreshold?: number;
   maxObservations?: number;
   bootstrapDefaultSources?: boolean;
+  forceAutoApply?: boolean;
 };
 
 export type EvidenceLoopResult = {

@@ -941,6 +941,7 @@ export function createWorldModelServices(
       let autoAppliedCount = 0;
       let reviewCount = 0;
       const threshold = runOptions.autoConfirmThreshold ?? source.autoConfirmThreshold;
+      const autoConfirm = runOptions.forceAutoApply || source.autoConfirm;
 
       for (const rawObservation of rawObservations) {
         const observation = await createObservation({
@@ -967,14 +968,14 @@ export function createWorldModelServices(
         }
 
         candidateCount += 1;
-        if (runOptions.reviewOnly || !source.autoConfirm || !canAutoApplyLinks(links, threshold)) {
+        if (runOptions.reviewOnly || !autoConfirm || !canAutoApplyLinks(links, threshold)) {
           await store.updateObservation(observation.id, {
             metadata: {
               ...observation.metadata,
               recommendedLinks: links,
               reviewReason: candidateReviewReason({
                 reviewOnly: runOptions.reviewOnly,
-                autoConfirm: source.autoConfirm
+                autoConfirm
               })
             }
           });
@@ -1041,6 +1042,7 @@ export function createWorldModelServices(
           reviewOnly: loopOptions.reviewOnly,
           autoConfirmThreshold: loopOptions.autoConfirmThreshold,
           maxObservations: loopOptions.maxObservations,
+          forceAutoApply: loopOptions.forceAutoApply,
           queries
         })
       );

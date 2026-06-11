@@ -137,6 +137,9 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           <label className="flex items-center gap-2 text-sm text-ink/70">
             <input name="bootstrapDefaultSources" type="checkbox" defaultChecked /> 补齐推荐来源
           </label>
+          <label className="flex items-center gap-2 text-sm text-ink/70">
+            <input name="forceAutoApply" type="checkbox" /> 本次自动应用
+          </label>
           <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white">
             <Play size={16} /> 运行闭环
           </button>

@@ -45,6 +45,7 @@ async function main() {
   const loop = process.argv.includes("--loop");
   const reviewOnly = process.argv.includes("--review-only");
   const bootstrapDefaultSources = process.argv.includes("--bootstrap-default-sources");
+  const forceAutoApply = process.argv.includes("--force-auto-apply");
   const sourceId = arg("--source");
   const runAllSources = process.argv.includes("--all");
 
@@ -58,7 +59,8 @@ async function main() {
           sourceIds: sourceId ? [sourceId] : undefined,
           maxObservations: numberArg("--max-observations"),
           autoConfirmThreshold: numberArg("--threshold"),
-          bootstrapDefaultSources
+          bootstrapDefaultSources,
+          forceAutoApply
         });
         console.log(JSON.stringify(result, null, 2));
         return;

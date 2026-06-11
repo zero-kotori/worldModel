@@ -1224,6 +1224,60 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("can force auto-apply for one bootstrapped evidence loop without changing source defaults", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          [
+            "<rss><channel>",
+            "<item>",
+            "<title>AI agents accelerate engineering teams</title>",
+            "<description>AI agents accelerate engineering teams in repeated production workflows.</description>",
+            "<link>https://example.com/agent-auto-apply-evidence</link>",
+            "</item>",
+            "</channel></rss>"
+          ].join("")
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+
+    const loop = await services.automation.runEvidenceLoop({
+      bootstrapDefaultSources: true,
+      forceAutoApply: true,
+      maxObservations: 1,
+      autoConfirmThreshold: 0.2
+    });
+    const sources = await services.sources.listSources();
+    const evidence = await services.evidence.listEvidence();
+    const updates = await services.updates.listEvents();
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+
+    expect(sources).toHaveLength(sourcePresetDefinitions.length);
+    expect(sources.every((source) => source.autoConfirm === false)).toBe(true);
+    expect(loop).toMatchObject({
+      candidateCount: 1,
+      autoAppliedCount: 1,
+      reviewCount: 0,
+      failureCount: 0
+    });
+    expect(evidence).toHaveLength(1);
+    expect(updates).toHaveLength(1);
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.35);
+  });
+
   it("lists and creates default public source presets without duplicates", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
 
