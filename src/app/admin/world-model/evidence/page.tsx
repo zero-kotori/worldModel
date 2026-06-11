@@ -12,6 +12,7 @@ import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import { evidenceDirectionLabels, hypothesisStanceLabels } from "@/lib/world-model-navigation";
+import { summarizeUpdateDelta } from "@/lib/world-model-updates-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
 
@@ -23,6 +24,12 @@ type PageProps = {
 
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function deltaToneClass(tone: ReturnType<typeof summarizeUpdateDelta>["tone"]) {
+  if (tone === "increase") return "text-moss";
+  if (tone === "decrease") return "text-berry";
+  return "text-ink/55";
 }
 
 function HypothesisCheckboxes({ beliefs }: { beliefs: Awaited<ReturnType<typeof loadWorldModelData>>["beliefs"] }) {
@@ -393,19 +400,27 @@ export default async function EvidencePage({ searchParams }: PageProps) {
                   <th className="py-2">事件</th>
                   <th className="py-2">状态</th>
                   <th className="py-2">证据</th>
+                  <th className="py-2">变化</th>
                 </tr>
               </thead>
               <tbody>
-                {data.updates.map((event) => (
-                  <tr key={event.id} className="border-t border-line">
-                    <td className="py-2 pr-3 font-mono text-xs">{readableCode(updateCodes, event.id, "U")}</td>
-                    <td className="py-2 pr-3">{event.status}</td>
-                    <td className="py-2 pr-3">
-                      <span className="font-mono text-xs">{readableCode(evidenceCodes, event.evidenceId, "E")}</span>
-                      <span className="ml-2 text-ink/75">{evidenceById.get(event.evidenceId)?.title ?? "已删除证据"}</span>
-                    </td>
-                  </tr>
-                ))}
+                {data.updates.map((event) => {
+                  const delta = summarizeUpdateDelta(event, (hypothesisId) => readableCode(hypothesisCodes, hypothesisId, "H"));
+                  return (
+                    <tr key={event.id} className="border-t border-line">
+                      <td className="py-2 pr-3 font-mono text-xs">{readableCode(updateCodes, event.id, "U")}</td>
+                      <td className="py-2 pr-3">{event.status}</td>
+                      <td className="py-2 pr-3">
+                        <span className="font-mono text-xs">{readableCode(evidenceCodes, event.evidenceId, "E")}</span>
+                        <span className="ml-2 text-ink/75">{evidenceById.get(event.evidenceId)?.title ?? "已删除证据"}</span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <span className={`font-semibold ${deltaToneClass(delta.tone)}`}>{delta.label}</span>
+                        <span className="ml-2 text-xs text-ink/55">{delta.detail}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

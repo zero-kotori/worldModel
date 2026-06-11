@@ -10,6 +10,7 @@ import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor"
 import { summarizeLlmScorerConfig } from "@/lib/world-model-models-ui";
 import { categoryLabels } from "@/lib/world-model-navigation";
 import { summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
+import { summarizeUpdateDelta } from "@/lib/world-model-updates-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +20,22 @@ function actionToneClass(level: ReturnType<typeof summarizeDashboardActions>[num
   return "border-line text-ink";
 }
 
+function deltaToneClass(tone: ReturnType<typeof summarizeUpdateDelta>["tone"]) {
+  if (tone === "increase") return "text-moss";
+  if (tone === "decrease") return "text-berry";
+  return "text-ink/55";
+}
+
 export default async function WorldModelDashboardPage() {
   const data = await loadWorldModelData();
   const beliefCodes = createReadableCodes(data.beliefs, "B", (belief) => belief.createdAt);
   const evidenceCodes = createReadableCodes(data.evidence, "E", (evidence) => evidence.confirmedAt);
   const updateCodes = createReadableCodes(data.updates, "U", (event) => event.createdAt);
+  const hypothesisCodes = createReadableCodes(
+    data.beliefs.flatMap((belief) => belief.hypotheses),
+    "H",
+    (hypothesis) => hypothesis.createdAt
+  );
   const evidenceById = new Map(data.evidence.map((evidence) => [evidence.id, evidence]));
   const graph = createWorldModelGraph({ beliefs: data.beliefs, evidence: data.evidence, updates: data.updates });
   const graphEditor = createWorldModelGraphEditorData({ beliefs: data.beliefs, evidence: data.evidence, updates: data.updates });
@@ -151,25 +163,33 @@ export default async function WorldModelDashboardPage() {
               <tr>
                 <th className="px-3 py-2">事件</th>
                 <th className="px-3 py-2">状态</th>
+                <th className="px-3 py-2">变化</th>
                 <th className="px-3 py-2">时间</th>
               </tr>
             </thead>
             <tbody>
-              {data.updates.slice(0, 8).map((event) => (
-                <tr key={event.id} className="border-t border-line">
-                  <td className="px-3 py-2">
-                    <span className="font-mono text-xs">{readableCode(updateCodes, event.id, "U")}</span>
-                    <span className="ml-2 text-ink/65">
-                      {evidenceById.get(event.evidenceId)?.title ?? readableCode(evidenceCodes, event.evidenceId, "E")}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">{event.status}</td>
-                  <td className="px-3 py-2">{event.createdAt.toLocaleString("zh-CN")}</td>
-                </tr>
-              ))}
+              {data.updates.slice(0, 8).map((event) => {
+                const delta = summarizeUpdateDelta(event, (hypothesisId) => readableCode(hypothesisCodes, hypothesisId, "H"));
+                return (
+                  <tr key={event.id} className="border-t border-line">
+                    <td className="px-3 py-2">
+                      <span className="font-mono text-xs">{readableCode(updateCodes, event.id, "U")}</span>
+                      <span className="ml-2 text-ink/65">
+                        {evidenceById.get(event.evidenceId)?.title ?? readableCode(evidenceCodes, event.evidenceId, "E")}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">{event.status}</td>
+                    <td className="px-3 py-2">
+                      <span className={`font-semibold ${deltaToneClass(delta.tone)}`}>{delta.label}</span>
+                      <span className="ml-2 text-xs text-ink/55">{delta.detail}</span>
+                    </td>
+                    <td className="px-3 py-2">{event.createdAt.toLocaleString("zh-CN")}</td>
+                  </tr>
+                );
+              })}
               {data.updates.length === 0 ? (
                 <tr>
-                  <td className="px-3 py-4 text-ink/50" colSpan={3}>
+                  <td className="px-3 py-4 text-ink/50" colSpan={4}>
                     暂无更新事件
                   </td>
                 </tr>
