@@ -504,5 +504,23 @@ describe("world model sources UI", () => {
       label: "调整采集来源",
       href: "/admin/world-model/sources#source-list"
     });
+
+    const openObservationHealth = summarizeAutomationHealth([], [], {
+      sourceCount: 1,
+      enabledSourceCount: 1,
+      activeBeliefCount: 1,
+      activeHypothesisCount: 1,
+      effectiveHypothesisCount: 1,
+      openObservationCount: 3
+    });
+    expect(openObservationHealth.diagnostics).toContainEqual({
+      level: "info",
+      title: "观察等待处理",
+      detail: "3 条观察尚未确认为证据，处理后才能继续更新对应假设和信念。"
+    });
+    expect(openObservationHealth.nextActions).toContainEqual({
+      label: "处理观察积压",
+      href: "/admin/world-model/observations"
+    });
   });
 });

@@ -79,6 +79,9 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     (count, belief) => count + belief.hypotheses.filter((hypothesis) => isHypothesisCurrentlyEffective(hypothesis, referenceTime)).length,
     0
   );
+  const openObservationCount = data.observations.filter((observation) =>
+    ["PENDING", "DUPLICATE", "UNKNOWN"].includes(observation.status)
+  ).length;
   const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, {
     workerRuntime: data.workerRuntime,
     sources: automationSources,
@@ -86,7 +89,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     enabledSourceCount: automationSources.filter((source) => source.enabled).length,
     activeBeliefCount: activeBeliefs.length,
     activeHypothesisCount,
-    effectiveHypothesisCount
+    effectiveHypothesisCount,
+    openObservationCount
   });
   const workerConfig = data.workerConfigs[0] ?? fallbackWorkerConfig();
   const stopWorkerId =

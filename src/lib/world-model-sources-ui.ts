@@ -28,6 +28,7 @@ type AutomationHealthOptions =
       activeBeliefCount?: number;
       activeHypothesisCount?: number;
       effectiveHypothesisCount?: number;
+      openObservationCount?: number;
       sources?: ObservationSourceRecord[];
     };
 type AutomationWorkerSummary = {
@@ -219,6 +220,7 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
       activeBeliefCount: undefined,
       activeHypothesisCount: undefined,
       effectiveHypothesisCount: undefined,
+      openObservationCount: undefined,
       sources: []
     };
   }
@@ -230,6 +232,7 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
     activeBeliefCount: options?.activeBeliefCount,
     activeHypothesisCount: options?.activeHypothesisCount,
     effectiveHypothesisCount: options?.effectiveHypothesisCount,
+    openObservationCount: options?.openObservationCount,
     sources: options?.sources ?? []
   };
 }
@@ -244,6 +247,7 @@ function automationDiagnostics(input: {
   activeBeliefCount?: number;
   activeHypothesisCount?: number;
   effectiveHypothesisCount?: number;
+  openObservationCount?: number;
   latestRun?: ObservationRunRecord;
   latestFailedRun?: ObservationRunRecord;
   suppressedSources: SuppressedAutomationSource[];
@@ -356,6 +360,14 @@ function automationDiagnostics(input: {
     });
   }
 
+  if ((input.openObservationCount ?? 0) > 0) {
+    diagnostics.push({
+      level: "info",
+      title: "观察等待处理",
+      detail: `${input.openObservationCount} 条观察尚未确认为证据，处理后才能继续更新对应假设和信念。`
+    });
+  }
+
   return diagnostics;
 }
 
@@ -428,6 +440,12 @@ function automationNextActions(diagnostics: AutomationDiagnostic[]): AutomationN
         href: "/admin/world-model/sources#automation-worker"
       });
     }
+    if (diagnostic.title === "观察等待处理") {
+      addNextAction(actions, {
+        label: "处理观察积压",
+        href: "/admin/world-model/observations"
+      });
+    }
   }
   return actions;
 }
@@ -456,6 +474,7 @@ export function summarizeAutomationHealth(
     activeBeliefCount,
     activeHypothesisCount,
     effectiveHypothesisCount,
+    openObservationCount,
     sources
   } = normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
@@ -469,6 +488,7 @@ export function summarizeAutomationHealth(
     activeBeliefCount,
     activeHypothesisCount,
     effectiveHypothesisCount,
+    openObservationCount,
     latestRun,
     latestFailedRun,
     suppressedSources,
