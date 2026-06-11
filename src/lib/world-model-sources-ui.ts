@@ -1,6 +1,11 @@
 import type { AutomationHeartbeatRecord, ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
 
 type AutomationHealthTone = "idle" | "healthy" | "warning" | "failing";
+type AutomationDiagnostic = {
+  level: "info" | "warning" | "error";
+  title: string;
+  detail: string;
+};
 type AutomationWorkerRuntime = {
   workerId: string;
   running: boolean;
@@ -12,6 +17,8 @@ type AutomationHealthOptions =
   | {
       referenceTime?: Date;
       workerRuntime?: AutomationWorkerRuntime[];
+      sourceCount?: number;
+      enabledSourceCount?: number;
     };
 type AutomationWorkerSummary = {
   id?: string;
@@ -163,12 +170,88 @@ function summarizeWorker(
 
 function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
   if (options instanceof Date) {
-    return { referenceTime: options, workerRuntime: [] };
+    return { referenceTime: options, workerRuntime: [], sourceCount: undefined, enabledSourceCount: undefined };
   }
   return {
     referenceTime: options?.referenceTime ?? new Date(),
-    workerRuntime: options?.workerRuntime ?? []
+    workerRuntime: options?.workerRuntime ?? [],
+    sourceCount: options?.sourceCount,
+    enabledSourceCount: options?.enabledSourceCount
   };
+}
+
+function isFetchFailure(message: string) {
+  return /fetch failed|failed to fetch|network|timeout|enotfound|econn|etimedout/i.test(message);
+}
+
+function automationDiagnostics(input: {
+  sourceCount?: number;
+  enabledSourceCount?: number;
+  latestRun?: ObservationRunRecord;
+  latestFailedRun?: ObservationRunRecord;
+  worker: AutomationWorkerSummary;
+}): AutomationDiagnostic[] {
+  const diagnostics: AutomationDiagnostic[] = [];
+
+  if (input.sourceCount === 0) {
+    diagnostics.push({
+      level: "warning",
+      title: "缺少采集来源",
+      detail: "添加或补齐推荐来源后，闭环才能自动搜集观察。"
+    });
+  } else if (input.enabledSourceCount === 0) {
+    diagnostics.push({
+      level: "warning",
+      title: "没有启用来源",
+      detail: "启用至少一个非手动来源后，闭环才能自动采集。"
+    });
+  }
+
+  const failureMessage = input.latestFailedRun?.errorMessage?.trim() ?? "";
+  if (input.latestFailedRun && isFetchFailure(failureMessage)) {
+    diagnostics.push({
+      level: "error",
+      title: "来源抓取失败",
+      detail: "检查最近失败来源的 URL、网络可达性或适配器配置。"
+    });
+  }
+
+  if (
+    input.latestRun &&
+    input.latestRun.status !== "FAILED" &&
+    input.latestRun.candidateCount > 0 &&
+    input.latestRun.autoAppliedCount === 0 &&
+    input.latestRun.reviewCount > 0
+  ) {
+    diagnostics.push({
+      level: "info",
+      title: "候选等待确认",
+      detail: "关闭仅生成待审或降低自动应用阈值后，可信候选才能自动更新信念。"
+    });
+  }
+
+  if (
+    input.latestRun &&
+    input.latestRun.status !== "FAILED" &&
+    input.latestRun.queryCount > 0 &&
+    input.latestRun.candidateCount === 0
+  ) {
+    diagnostics.push({
+      level: "info",
+      title: "未识别候选证据",
+      detail: "收窄假设表述、调整来源或降低候选识别阈值。"
+    });
+  }
+
+  if (input.worker.label === "心跳过期") {
+    diagnostics.push({
+      level: "error",
+      title: "守护进程心跳过期",
+      detail: "重新启动守护进程，或检查本地服务进程是否仍在运行。"
+    });
+  }
+
+  return diagnostics;
 }
 
 export function summarizeAutomationHealth(
@@ -184,11 +267,20 @@ export function summarizeAutomationHealth(
   latestError: string;
   latestCounts: Pick<ObservationRunRecord, "itemCount" | "candidateCount" | "autoAppliedCount" | "reviewCount">;
   worker: AutomationWorkerSummary;
+  diagnostics: AutomationDiagnostic[];
 } {
-  const { referenceTime, workerRuntime } = normalizeHealthOptions(options);
+  const { referenceTime, workerRuntime, sourceCount, enabledSourceCount } = normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
   const latestRun = orderedRuns[0];
   const worker = summarizeWorker(heartbeats, referenceTime, workerRuntime);
+  const latestFailedRun = orderedRuns.find((run) => run.status === "FAILED");
+  const diagnostics = automationDiagnostics({
+    sourceCount,
+    enabledSourceCount,
+    latestRun,
+    latestFailedRun,
+    worker
+  });
 
   if (!latestRun) {
     return {
@@ -204,14 +296,14 @@ export function summarizeAutomationHealth(
         autoAppliedCount: 0,
         reviewCount: 0
       },
-      worker
+      worker,
+      diagnostics
     };
   }
 
   const consecutiveFailureCount = orderedRuns.findIndex(successfulRun);
   const failureCount = consecutiveFailureCount === -1 ? orderedRuns.length : consecutiveFailureCount;
   const lastSuccess = orderedRuns.find(successfulRun);
-  const latestFailedRun = orderedRuns.find((run) => run.status === "FAILED");
   let tone: AutomationHealthTone = "healthy";
   let label = "正常";
 
@@ -236,6 +328,7 @@ export function summarizeAutomationHealth(
       autoAppliedCount: latestRun.autoAppliedCount,
       reviewCount: latestRun.reviewCount
     },
-    worker
+    worker,
+    diagnostics
   };
 }

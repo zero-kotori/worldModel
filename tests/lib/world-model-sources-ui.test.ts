@@ -121,7 +121,8 @@ describe("world model sources UI", () => {
         intervalMs: undefined,
         consecutiveFailureCount: 0,
         lastError: ""
-      }
+      },
+      diagnostics: []
     });
   });
 
@@ -280,6 +281,48 @@ describe("world model sources UI", () => {
       tone: "healthy",
       nextRunAt: new Date("2026-06-11T05:15:00.000Z"),
       consecutiveFailureCount: 0
+    });
+  });
+
+  it("returns actionable diagnostics for stalled automation loops", () => {
+    const noSourceHealth = summarizeAutomationHealth([], [], { sourceCount: 0, enabledSourceCount: 0 });
+    expect(noSourceHealth.diagnostics).toContainEqual({
+      level: "warning",
+      title: "缺少采集来源",
+      detail: "添加或补齐推荐来源后，闭环才能自动搜集观察。"
+    });
+
+    const fetchFailedHealth = summarizeAutomationHealth([
+      run({
+        id: "failed-run",
+        sourceId: "source_1",
+        status: "FAILED",
+        startedAt: new Date("2026-06-11T03:00:00.000Z"),
+        queryCount: 3,
+        errorMessage: "fetch failed"
+      })
+    ]);
+    expect(fetchFailedHealth.diagnostics).toContainEqual({
+      level: "error",
+      title: "来源抓取失败",
+      detail: "检查最近失败来源的 URL、网络可达性或适配器配置。"
+    });
+
+    const reviewOnlyHealth = summarizeAutomationHealth([
+      run({
+        id: "review-only-run",
+        sourceId: "source_1",
+        status: "REVIEW_ONLY",
+        startedAt: new Date("2026-06-11T03:00:00.000Z"),
+        candidateCount: 4,
+        autoAppliedCount: 0,
+        reviewCount: 4
+      })
+    ]);
+    expect(reviewOnlyHealth.diagnostics).toContainEqual({
+      level: "info",
+      title: "候选等待确认",
+      detail: "关闭仅生成待审或降低自动应用阈值后，可信候选才能自动更新信念。"
     });
   });
 });

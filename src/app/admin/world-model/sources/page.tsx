@@ -33,6 +33,12 @@ function healthToneClass(tone: ReturnType<typeof summarizeAutomationHealth>["ton
   return "text-ink/55";
 }
 
+function diagnosticToneClass(level: ReturnType<typeof summarizeAutomationHealth>["diagnostics"][number]["level"]) {
+  if (level === "error") return "text-berry";
+  if (level === "warning") return "text-amber-700";
+  return "text-ink/70";
+}
+
 function fallbackWorkerConfig() {
   return {
     id: "default",
@@ -59,7 +65,12 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   }));
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
   const sourcePresets = listSourcePresets(data.sources);
-  const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, { workerRuntime: data.workerRuntime });
+  const automationSources = data.sources.filter((source) => source.kind !== "MANUAL");
+  const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, {
+    workerRuntime: data.workerRuntime,
+    sourceCount: automationSources.length,
+    enabledSourceCount: automationSources.filter((source) => source.enabled).length
+  });
   const workerConfig = data.workerConfigs[0] ?? fallbackWorkerConfig();
   const stopWorkerId =
     automationHealth.worker.status && automationHealth.worker.status !== "IDLE"
@@ -117,6 +128,19 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           ) : null}
           {automationHealth.worker.lastError ? (
             <div className="mt-3 border-t border-line pt-3 text-xs text-berry">{automationHealth.worker.lastError}</div>
+          ) : null}
+          {automationHealth.diagnostics.length > 0 ? (
+            <div className="mt-3 border-t border-line pt-3">
+              <div className="text-xs font-semibold text-ink/55">诊断</div>
+              <div className="mt-2 grid gap-2">
+                {automationHealth.diagnostics.map((diagnostic) => (
+                  <div key={`${diagnostic.level}-${diagnostic.title}`} className="text-sm">
+                    <span className={`font-semibold ${diagnosticToneClass(diagnostic.level)}`}>{diagnostic.title}</span>
+                    <span className="ml-2 text-ink/60">{diagnostic.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           ) : null}
         </div>
       </PageSection>
