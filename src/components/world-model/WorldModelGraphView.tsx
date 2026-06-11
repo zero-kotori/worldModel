@@ -21,6 +21,7 @@ import {
 } from "@/app/admin/world-model/actions";
 import type { WorldModelGraph, WorldModelGraphNode, WorldModelGraphNodeType } from "@/lib/world-model-graph";
 import type { WorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
+import { datetimeLocalValue } from "@/lib/world-model-beliefs-ui";
 import { createGraphInteractionOptions } from "@/lib/world-model-graph-ui";
 import { categoryLabels, evidenceDirectionLabels, hypothesisStanceLabels, probabilityModeLabels } from "@/lib/world-model-navigation";
 
@@ -338,6 +339,11 @@ function HypothesisEditor({ editor, hypothesisId }: { editor: WorldModelGraphEdi
         defaultValue={hypothesis.status}
         options={hypothesisStatusOptions.map((value) => ({ value, label: value }))}
       />
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="开始时间" name="startsAt" type="datetime-local" defaultValue={datetimeLocalValue(hypothesis.startsAt)} />
+        <Field label="到期时间" name="expiresAt" type="datetime-local" defaultValue={datetimeLocalValue(hypothesis.expiresAt)} />
+      </div>
+      <Field label="过期条件" name="expiryCondition" defaultValue={hypothesis.expiryCondition ?? ""} />
       <TextArea label="备注" name="notes" defaultValue={hypothesis.notes} />
       <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">保存假设</button>
     </form>

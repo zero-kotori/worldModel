@@ -115,8 +115,8 @@ const updateHypothesisSchema = z.object({
   priorProbability: probabilitySchema.optional(),
   currentProbability: probabilitySchema.optional(),
   status: z.enum(["ACTIVE", "PAUSED", "RESOLVED_TRUE", "RESOLVED_FALSE", "ARCHIVED"]).optional(),
-  startsAt: z.date().optional(),
-  expiresAt: z.date().optional(),
+  startsAt: z.date().nullable().optional(),
+  expiresAt: z.date().nullable().optional(),
   expiryCondition: z.string().optional()
 });
 

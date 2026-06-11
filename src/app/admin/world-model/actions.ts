@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { getWorldModelServices } from "@/server/services";
 import { getEvidenceLoopWorkerController } from "@/server/automation/local-worker";
+import { parseDateTimeLocalValue, parseDateTimePatchValue } from "@/lib/world-model-beliefs-ui";
 import { readEvidenceLinksFromFormData } from "@/lib/world-model-evidence-ui";
 import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import type { AutomationWorkerConfigRecord, BeliefCategory, HypothesisStance, ObservationSourceKind } from "@/server/services/types";
@@ -27,6 +28,14 @@ function optionalNumber(formData: FormData, key: string) {
 
 function bool(formData: FormData, key: string) {
   return formData.get(key) === "on" || formData.get(key) === "true";
+}
+
+function optionalDateTime(formData: FormData, key: string) {
+  return parseDateTimeLocalValue(text(formData, key));
+}
+
+function patchDateTime(formData: FormData, key: string) {
+  return parseDateTimePatchValue(text(formData, key));
 }
 
 function values(formData: FormData, key: string) {
@@ -149,7 +158,10 @@ export async function createHypothesisAction(formData: FormData) {
       proposition: text(formData, "proposition"),
       priorProbability: number(formData, "priorProbability", 0.5),
       stance: text(formData, "stance") as HypothesisStance,
-      notes: text(formData, "notes")
+      notes: text(formData, "notes"),
+      startsAt: optionalDateTime(formData, "startsAt"),
+      expiresAt: optionalDateTime(formData, "expiresAt"),
+      expiryCondition: text(formData, "expiryCondition") || undefined
     });
   });
 }
@@ -182,7 +194,7 @@ export async function updateBeliefAction(formData: FormData) {
 export async function updateHypothesisAction(formData: FormData) {
   await runAction("/admin/world-model/beliefs", "假设已更新", async () => {
     const services = getWorldModelServices();
-    await services.beliefs.updateHypothesis(text(formData, "hypothesisId"), {
+    const patch = {
       beliefId: text(formData, "beliefId"),
       proposition: text(formData, "proposition"),
       notes: text(formData, "notes"),
@@ -190,6 +202,14 @@ export async function updateHypothesisAction(formData: FormData) {
       priorProbability: number(formData, "priorProbability", 0.5),
       currentProbability: number(formData, "currentProbability", 0.5),
       status: text(formData, "status") as "ACTIVE" | "PAUSED" | "RESOLVED_TRUE" | "RESOLVED_FALSE" | "ARCHIVED"
+    };
+    const startsAt = patchDateTime(formData, "startsAt");
+    const expiresAt = patchDateTime(formData, "expiresAt");
+    await services.beliefs.updateHypothesis(text(formData, "hypothesisId"), {
+      ...patch,
+      ...(formData.has("startsAt") && startsAt !== undefined ? { startsAt } : {}),
+      ...(formData.has("expiresAt") && expiresAt !== undefined ? { expiresAt } : {}),
+      ...(formData.has("expiryCondition") ? { expiryCondition: text(formData, "expiryCondition") } : {})
     });
   });
 }

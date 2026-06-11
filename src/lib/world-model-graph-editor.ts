@@ -21,6 +21,9 @@ export type WorldModelGraphEditorData = {
     priorProbability: number;
     currentProbability: number;
     status: string;
+    startsAt?: Date;
+    expiresAt?: Date;
+    expiryCondition?: string;
   }>;
   evidence: Array<{
     id: string;
@@ -77,7 +80,10 @@ export function createWorldModelGraphEditorData(data: {
       stance: hypothesis.stance,
       priorProbability: hypothesis.priorProbability,
       currentProbability: hypothesis.currentProbability,
-      status: hypothesis.status
+      status: hypothesis.status,
+      startsAt: hypothesis.startsAt,
+      expiresAt: hypothesis.expiresAt,
+      expiryCondition: hypothesis.expiryCondition
     })),
     evidence: data.evidence.map((evidence) => ({
       id: evidence.id,

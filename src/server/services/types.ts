@@ -282,11 +282,12 @@ export type UpdateHypothesisInput = Partial<
     | "priorProbability"
     | "currentProbability"
     | "status"
-    | "startsAt"
-    | "expiresAt"
     | "expiryCondition"
   >
->;
+> & {
+  startsAt?: Date | null;
+  expiresAt?: Date | null;
+};
 
 export type CreateObservationInput = {
   sourceId?: string;

@@ -3,6 +3,7 @@ import { createBeliefAction, createHypothesisAction, createRecommendedHypothesis
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { getWorldModelServices } from "@/server/services";
 import { categoryLabels, hypothesisStanceLabels, probabilityModeLabels } from "@/lib/world-model-navigation";
+import { hypothesisTimeStatus } from "@/lib/world-model-beliefs-ui";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { createWorldModelGraph } from "@/lib/world-model-graph";
 import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
@@ -31,9 +32,17 @@ function beliefStrength(hypotheses: Awaited<ReturnType<typeof loadWorldModelData
   );
 }
 
+function timeToneClass(tone: ReturnType<typeof hypothesisTimeStatus>["tone"]) {
+  if (tone === "healthy") return "text-moss";
+  if (tone === "warning") return "text-amber-700";
+  if (tone === "expired") return "text-berry";
+  return "text-ink/55";
+}
+
 export default async function BeliefsPage({ searchParams }: PageProps) {
   const data = await loadWorldModelData();
   const params = (await searchParams) ?? {};
+  const referenceTime = new Date();
   const beliefCodes = createReadableCodes(data.beliefs, "B", (belief) => belief.createdAt);
   const hypothesisCodes = createReadableCodes(
     data.beliefs.flatMap((belief) => belief.hypotheses),
@@ -103,18 +112,26 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
                           <th className="py-2">类型</th>
                           <th className="py-2">当前概率</th>
                           <th className="py-2">状态</th>
+                          <th className="py-2">时间窗口</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {belief.hypotheses.map((hypothesis) => (
-                          <tr key={hypothesis.id} className="border-t border-line">
-                            <td className="py-2 pr-3 font-mono text-xs">{readableCode(hypothesisCodes, hypothesis.id, "H")}</td>
-                            <td className="py-2 pr-3">{hypothesis.proposition}</td>
-                            <td className="py-2 pr-3">{hypothesisStanceLabels[hypothesis.stance]}</td>
-                            <td className="py-2 pr-3">{(hypothesis.currentProbability * 100).toFixed(1)}%</td>
-                            <td className="py-2 pr-3">{hypothesis.status}</td>
-                          </tr>
-                        ))}
+                        {belief.hypotheses.map((hypothesis) => {
+                          const timeStatus = hypothesisTimeStatus(hypothesis, referenceTime);
+                          return (
+                            <tr key={hypothesis.id} className="border-t border-line">
+                              <td className="py-2 pr-3 font-mono text-xs">{readableCode(hypothesisCodes, hypothesis.id, "H")}</td>
+                              <td className="py-2 pr-3">{hypothesis.proposition}</td>
+                              <td className="py-2 pr-3">{hypothesisStanceLabels[hypothesis.stance]}</td>
+                              <td className="py-2 pr-3">{(hypothesis.currentProbability * 100).toFixed(1)}%</td>
+                              <td className="py-2 pr-3">{hypothesis.status}</td>
+                              <td className="py-2 pr-3">
+                                <div className={`font-semibold ${timeToneClass(timeStatus.tone)}`}>{timeStatus.label}</div>
+                                {timeStatus.detail ? <div className="mt-1 text-xs text-ink/50">{timeStatus.detail}</div> : null}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -173,6 +190,9 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
                       defaultValue="0.5"
                     />
                     <Field label="备注" name="notes" />
+                    <Field label="开始时间" name="startsAt" type="datetime-local" />
+                    <Field label="到期时间" name="expiresAt" type="datetime-local" />
+                    <Field label="过期条件" name="expiryCondition" />
                     <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white">
                       <Plus size={16} /> 添加假设
                     </button>

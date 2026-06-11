@@ -117,11 +117,15 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
       const targetBeliefId = patch.beliefId ?? existing.beliefId;
       const targetBelief = beliefs.find((belief) => belief.id === targetBeliefId);
       if (!targetBelief) throw new Error(`Belief not found: ${targetBeliefId}`);
+      const startsAt = patch.startsAt === null ? undefined : (patch.startsAt ?? existing.startsAt);
+      const expiresAt = patch.expiresAt === null ? undefined : (patch.expiresAt ?? existing.expiresAt);
       const updated = cloneHypothesis({
         ...existing,
         ...patch,
         beliefId: targetBeliefId,
         strength: patch.currentProbability ?? existing.strength,
+        startsAt,
+        expiresAt,
         updatedAt: patch.updatedAt
       });
 

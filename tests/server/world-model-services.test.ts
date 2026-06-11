@@ -263,6 +263,36 @@ describe("world model services", () => {
     );
   });
 
+  it("clears editable hypothesis time windows", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+    const belief = await services.beliefs.createBelief({
+      title: "Timed hypothesis",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "This hypothesis has a bounded review window",
+          priorProbability: 0.4,
+          notes: "",
+          startsAt: new Date("2026-06-12T00:00:00.000Z"),
+          expiresAt: new Date("2026-06-20T00:00:00.000Z"),
+          expiryCondition: "The review window closes."
+        }
+      ]
+    });
+
+    const updated = await services.beliefs.updateHypothesis(belief.hypotheses[0].id, {
+      startsAt: null,
+      expiresAt: null,
+      expiryCondition: ""
+    });
+
+    expect(updated.startsAt).toBeUndefined();
+    expect(updated.expiresAt).toBeUndefined();
+    expect(updated.expiryCondition).toBe("");
+  });
+
   it("confirms evidence and applies the linked hypothesis update in one service call", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const belief = await services.beliefs.createBelief({
