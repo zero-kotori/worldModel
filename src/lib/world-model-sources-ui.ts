@@ -27,6 +27,7 @@ type AutomationHealthOptions =
       enabledSourceCount?: number;
       activeBeliefCount?: number;
       activeHypothesisCount?: number;
+      effectiveHypothesisCount?: number;
       sources?: ObservationSourceRecord[];
     };
 type AutomationWorkerSummary = {
@@ -217,6 +218,7 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
       enabledSourceCount: undefined,
       activeBeliefCount: undefined,
       activeHypothesisCount: undefined,
+      effectiveHypothesisCount: undefined,
       sources: []
     };
   }
@@ -227,6 +229,7 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
     enabledSourceCount: options?.enabledSourceCount,
     activeBeliefCount: options?.activeBeliefCount,
     activeHypothesisCount: options?.activeHypothesisCount,
+    effectiveHypothesisCount: options?.effectiveHypothesisCount,
     sources: options?.sources ?? []
   };
 }
@@ -240,6 +243,7 @@ function automationDiagnostics(input: {
   enabledSourceCount?: number;
   activeBeliefCount?: number;
   activeHypothesisCount?: number;
+  effectiveHypothesisCount?: number;
   latestRun?: ObservationRunRecord;
   latestFailedRun?: ObservationRunRecord;
   suppressedSources: SuppressedAutomationSource[];
@@ -272,6 +276,12 @@ function automationDiagnostics(input: {
       level: "warning",
       title: "缺少活跃假设",
       detail: "为活跃信念表添加假设后，闭环才能评估证据并更新概率。"
+    });
+  } else if (input.effectiveHypothesisCount === 0) {
+    diagnostics.push({
+      level: "warning",
+      title: "没有当前有效假设",
+      detail: "活跃假设尚未开始或已经过期，续期、归档或补充当前可检验假设后，闭环才能生成有效检索任务。"
     });
   }
 
@@ -400,6 +410,12 @@ function automationNextActions(diagnostics: AutomationDiagnostic[]): AutomationN
         href: "/admin/world-model/beliefs"
       });
     }
+    if (diagnostic.title === "没有当前有效假设") {
+      addNextAction(actions, {
+        label: "调整信念假设",
+        href: "/admin/world-model/beliefs"
+      });
+    }
     if (diagnostic.title === "未采集观察") {
       addNextAction(actions, {
         label: "调整采集来源",
@@ -432,8 +448,16 @@ export function summarizeAutomationHealth(
   diagnostics: AutomationDiagnostic[];
   nextActions: AutomationNextAction[];
 } {
-  const { referenceTime, workerRuntime, sourceCount, enabledSourceCount, activeBeliefCount, activeHypothesisCount, sources } =
-    normalizeHealthOptions(options);
+  const {
+    referenceTime,
+    workerRuntime,
+    sourceCount,
+    enabledSourceCount,
+    activeBeliefCount,
+    activeHypothesisCount,
+    effectiveHypothesisCount,
+    sources
+  } = normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
   const latestRun = orderedRuns[0];
   const worker = summarizeWorker(heartbeats, referenceTime, workerRuntime);
@@ -444,6 +468,7 @@ export function summarizeAutomationHealth(
     enabledSourceCount,
     activeBeliefCount,
     activeHypothesisCount,
+    effectiveHypothesisCount,
     latestRun,
     latestFailedRun,
     suppressedSources,

@@ -429,6 +429,23 @@ describe("world model sources UI", () => {
       href: "/admin/world-model/beliefs"
     });
 
+    const noEffectiveHypothesisHealth = summarizeAutomationHealth([], [], {
+      sourceCount: 1,
+      enabledSourceCount: 1,
+      activeBeliefCount: 1,
+      activeHypothesisCount: 2,
+      effectiveHypothesisCount: 0
+    });
+    expect(noEffectiveHypothesisHealth.diagnostics).toContainEqual({
+      level: "warning",
+      title: "没有当前有效假设",
+      detail: "活跃假设尚未开始或已经过期，续期、归档或补充当前可检验假设后，闭环才能生成有效检索任务。"
+    });
+    expect(noEffectiveHypothesisHealth.nextActions).toContainEqual({
+      label: "调整信念假设",
+      href: "/admin/world-model/beliefs"
+    });
+
     const fetchFailedHealth = summarizeAutomationHealth([
       run({
         id: "failed-run",

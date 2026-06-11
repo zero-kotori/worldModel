@@ -57,6 +57,18 @@ function fallbackWorkerConfig() {
   };
 }
 
+function isCurrentlyEffectiveHypothesis(hypothesis: {
+  status: string;
+  startsAt?: Date;
+  expiresAt?: Date;
+}, referenceTime: Date) {
+  if (hypothesis.status !== "ACTIVE") return false;
+  const referenceMs = referenceTime.getTime();
+  if (hypothesis.startsAt && hypothesis.startsAt.getTime() > referenceMs) return false;
+  if (hypothesis.expiresAt && hypothesis.expiresAt.getTime() <= referenceMs) return false;
+  return true;
+}
+
 export default async function SourcesPage({ searchParams }: PageProps) {
   const data = await loadWorldModelData();
   const params = (await searchParams) ?? {};
@@ -69,16 +81,23 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const sourcePresets = listSourcePresets(data.sources);
   const automationSources = data.sources.filter((source) => source.kind !== "MANUAL");
   const activeBeliefs = data.beliefs.filter((belief) => belief.status === "ACTIVE");
+  const referenceTime = new Date();
+  const activeHypothesisCount = activeBeliefs.reduce(
+    (count, belief) => count + belief.hypotheses.filter((hypothesis) => hypothesis.status === "ACTIVE").length,
+    0
+  );
+  const effectiveHypothesisCount = activeBeliefs.reduce(
+    (count, belief) => count + belief.hypotheses.filter((hypothesis) => isCurrentlyEffectiveHypothesis(hypothesis, referenceTime)).length,
+    0
+  );
   const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, {
     workerRuntime: data.workerRuntime,
     sources: automationSources,
     sourceCount: automationSources.length,
     enabledSourceCount: automationSources.filter((source) => source.enabled).length,
     activeBeliefCount: activeBeliefs.length,
-    activeHypothesisCount: activeBeliefs.reduce(
-      (count, belief) => count + belief.hypotheses.filter((hypothesis) => hypothesis.status === "ACTIVE").length,
-      0
-    )
+    activeHypothesisCount,
+    effectiveHypothesisCount
   });
   const workerConfig = data.workerConfigs[0] ?? fallbackWorkerConfig();
   const stopWorkerId =
