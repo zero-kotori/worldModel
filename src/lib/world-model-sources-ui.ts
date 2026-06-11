@@ -50,7 +50,26 @@ function latestHeartbeat(heartbeats: AutomationHeartbeatRecord[]) {
   return [...heartbeats].sort((a, b) => b.heartbeatAt.getTime() - a.heartbeatAt.getTime())[0];
 }
 
-function summarizeWorker(heartbeats: AutomationHeartbeatRecord[] = []): AutomationWorkerSummary {
+function isHeartbeatStale(heartbeat: AutomationHeartbeatRecord, referenceTime: Date) {
+  if (heartbeat.status === "IDLE") return false;
+  const graceMs = Math.max(heartbeat.intervalMs * 2, 5 * 60 * 1000);
+  const dueAt = heartbeat.nextRunAt ?? new Date(heartbeat.heartbeatAt.getTime() + heartbeat.intervalMs);
+  return referenceTime.getTime() > dueAt.getTime() + graceMs;
+}
+
+function workerSummaryBase(heartbeat: AutomationHeartbeatRecord): Omit<AutomationWorkerSummary, "label" | "tone"> {
+  return {
+    id: heartbeat.id,
+    status: heartbeat.status,
+    latestHeartbeatAt: heartbeat.heartbeatAt,
+    nextRunAt: heartbeat.nextRunAt,
+    intervalMs: heartbeat.intervalMs,
+    consecutiveFailureCount: heartbeat.consecutiveFailureCount,
+    lastError: truncateErrorMessage(heartbeat.lastError)
+  };
+}
+
+function summarizeWorker(heartbeats: AutomationHeartbeatRecord[] = [], referenceTime = new Date()): AutomationWorkerSummary {
   const heartbeat = latestHeartbeat(heartbeats);
   if (!heartbeat) {
     return {
@@ -66,50 +85,41 @@ function summarizeWorker(heartbeats: AutomationHeartbeatRecord[] = []): Automati
     };
   }
 
+  if (isHeartbeatStale(heartbeat, referenceTime)) {
+    return {
+      ...workerSummaryBase(heartbeat),
+      label: "心跳过期",
+      tone: "failing"
+    };
+  }
+
   if (heartbeat.status === "IDLE") {
     return {
-      id: heartbeat.id,
-      status: heartbeat.status,
+      ...workerSummaryBase(heartbeat),
       label: "已停止",
-      tone: "idle",
-      latestHeartbeatAt: heartbeat.heartbeatAt,
-      nextRunAt: heartbeat.nextRunAt,
-      intervalMs: heartbeat.intervalMs,
-      consecutiveFailureCount: heartbeat.consecutiveFailureCount,
-      lastError: truncateErrorMessage(heartbeat.lastError)
+      tone: "idle"
     };
   }
 
   if (heartbeat.status === "ERROR") {
     return {
-      id: heartbeat.id,
-      status: heartbeat.status,
+      ...workerSummaryBase(heartbeat),
       label: "等待重试",
-      tone: heartbeat.consecutiveFailureCount >= 2 ? "failing" : "warning",
-      latestHeartbeatAt: heartbeat.heartbeatAt,
-      nextRunAt: heartbeat.nextRunAt,
-      intervalMs: heartbeat.intervalMs,
-      consecutiveFailureCount: heartbeat.consecutiveFailureCount,
-      lastError: truncateErrorMessage(heartbeat.lastError)
+      tone: heartbeat.consecutiveFailureCount >= 2 ? "failing" : "warning"
     };
   }
 
   return {
-    id: heartbeat.id,
-    status: heartbeat.status,
+    ...workerSummaryBase(heartbeat),
     label: "运行中",
-    tone: "healthy",
-    latestHeartbeatAt: heartbeat.heartbeatAt,
-    nextRunAt: heartbeat.nextRunAt,
-    intervalMs: heartbeat.intervalMs,
-    consecutiveFailureCount: heartbeat.consecutiveFailureCount,
-    lastError: truncateErrorMessage(heartbeat.lastError)
+    tone: "healthy"
   };
 }
 
 export function summarizeAutomationHealth(
   runs: ObservationRunRecord[],
-  heartbeats: AutomationHeartbeatRecord[] = []
+  heartbeats: AutomationHeartbeatRecord[] = [],
+  referenceTime = new Date()
 ): {
   label: string;
   tone: AutomationHealthTone;
@@ -122,7 +132,7 @@ export function summarizeAutomationHealth(
 } {
   const orderedRuns = sortedRuns(runs);
   const latestRun = orderedRuns[0];
-  const worker = summarizeWorker(heartbeats);
+  const worker = summarizeWorker(heartbeats, referenceTime);
 
   if (!latestRun) {
     return {

@@ -178,7 +178,8 @@ describe("world model sources UI", () => {
       [
         heartbeat({ id: "old", status: "IDLE", heartbeatAt: new Date("2026-06-11T02:00:00.000Z") }),
         latestHeartbeat
-      ]
+      ],
+      new Date("2026-06-11T04:10:00.000Z")
     );
 
     expect(health.worker).toEqual({
@@ -191,6 +192,31 @@ describe("world model sources UI", () => {
       intervalMs: 900_000,
       consecutiveFailureCount: 0,
       lastError: ""
+    });
+  });
+
+  it("marks a running automation worker as stale when the heartbeat is overdue", () => {
+    const health = summarizeAutomationHealth(
+      [],
+      [
+        heartbeat({
+          id: "default",
+          status: "RUNNING",
+          heartbeatAt: new Date("2026-06-11T04:00:00.000Z"),
+          nextRunAt: new Date("2026-06-11T04:15:00.000Z"),
+          intervalMs: 900_000
+        })
+      ],
+      new Date("2026-06-11T05:00:00.000Z")
+    );
+
+    expect(health.worker).toMatchObject({
+      id: "default",
+      status: "RUNNING",
+      label: "心跳过期",
+      tone: "failing",
+      latestHeartbeatAt: new Date("2026-06-11T04:00:00.000Z"),
+      nextRunAt: new Date("2026-06-11T04:15:00.000Z")
     });
   });
 });
