@@ -88,6 +88,41 @@ describe("world model services", () => {
     expect(evidence).toHaveLength(0);
   });
 
+  it("does not confirm rejected observations as evidence", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+    const belief = await services.beliefs.createBelief({
+      title: "Rejected observation safety",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [{ proposition: "Rejected observations stay excluded", priorProbability: 0.4, notes: "" }]
+    });
+    const observation = await services.observations.createObservation({
+      title: "Rejected observation",
+      content: "This observation was rejected.",
+      credibility: 0.5
+    });
+    await services.observations.rejectObservation(observation.id);
+
+    await expect(
+      services.evidence.confirmObservation({
+        observationId: observation.id,
+        confirmationMode: "MANUAL",
+        links: [
+          {
+            hypothesisId: belief.hypotheses[0].id,
+            direction: "SUPPORTS",
+            relevance: 0.8,
+            likelihoodRatio: 2,
+            confidence: 0.7,
+            rationale: "Rejected observations must not be revived as evidence."
+          }
+        ]
+      })
+    ).rejects.toThrow("Rejected observations cannot be confirmed as evidence");
+    await expect(services.evidence.listEvidence()).resolves.toHaveLength(0);
+  });
+
   it("confirms an observation as evidence linked to multiple hypotheses", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const belief = await services.beliefs.createBelief({

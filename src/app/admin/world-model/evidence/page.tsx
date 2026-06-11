@@ -67,7 +67,7 @@ function HypothesisCheckboxes({ beliefs }: { beliefs: Awaited<ReturnType<typeof 
 export default async function EvidencePage({ searchParams }: PageProps) {
   const data = await loadWorldModelData();
   const params = (await searchParams) ?? {};
-  const pendingObservations = data.observations.filter((observation) => observation.status !== "CONFIRMED");
+  const pendingObservations = data.observations.filter((observation) => observation.status !== "CONFIRMED" && observation.status !== "REJECTED");
   const appliedEvidenceIds = new Set(data.updates.filter((event) => event.status === "APPLIED").map((event) => event.evidenceId));
   const observationCodes = createReadableCodes(data.observations, "O", (observation) => observation.observedAt);
   const selectedObservationParam = firstParam(params.observation);

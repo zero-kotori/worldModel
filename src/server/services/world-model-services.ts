@@ -525,6 +525,9 @@ export function createWorldModelServices(
     const parsed = confirmEvidenceSchema.parse(input);
     const observation = await store.getObservation(parsed.observationId);
     if (!observation) throw new Error(`Observation not found: ${parsed.observationId}`);
+    if (observation.status === "REJECTED") {
+      throw new Error("Rejected observations cannot be confirmed as evidence.");
+    }
     const existingEvidence = (await store.listEvidence()).find((item) => item.observationId === observation.id);
     if (existingEvidence) throw new Error(`Observation is already confirmed as evidence: ${observation.title}`);
 
