@@ -550,6 +550,172 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.35);
   });
 
+  it("auto-links one source observation to multiple hypotheses under the same belief", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>AI agents accelerate engineering teams</title></head><body>AI agents accelerate engineering teams and reduce manual QA work.</body></html>"
+      },
+      likelihoodEstimator: {
+        name: "llm",
+        estimate: async (input) => {
+          if (input.hypothesis.includes("manual QA")) {
+            return {
+              estimator: "llm",
+              direction: "SUPPORTS",
+              relevance: 0.78,
+              likelihoodRatio: 1.9,
+              confidence: 0.76,
+              weight: 3,
+              rationale: "The evidence separately supports reduced manual QA work.",
+              modelVersion: "deepseek:deepseek-chat",
+              abstain: false
+            };
+          }
+          return {
+            estimator: "llm",
+            direction: "SUPPORTS",
+            relevance: 0.86,
+            likelihoodRatio: 2.6,
+            confidence: 0.82,
+            weight: 3,
+            rationale: "The evidence supports acceleration for engineering teams.",
+            modelVersion: "deepseek:deepseek-chat",
+            abstain: false
+          };
+        }
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "Track practical agent adoption.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: ""
+        },
+        {
+          proposition: "AI agents reduce manual QA work",
+          priorProbability: 0.3,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Agent multi-hypothesis page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/agent-multi",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.5
+    });
+
+    const run = await services.sources.runSource(source.id);
+    const evidence = await services.evidence.listEvidence();
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+
+    expect(run.candidateCount).toBe(1);
+    expect(run.autoAppliedCount).toBe(1);
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0].links).toHaveLength(2);
+    expect(evidence[0].links).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hypothesisId: belief.hypotheses[0].id,
+          likelihoodRatio: 2.6,
+          confidence: 0.82
+        }),
+        expect.objectContaining({
+          hypothesisId: belief.hypotheses[1].id,
+          likelihoodRatio: 1.9,
+          confidence: 0.76
+        })
+      ])
+    );
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.35);
+    expect(updatedBelief?.hypotheses[1].currentProbability).toBeGreaterThan(0.3);
+  });
+
+  it("keeps low-confidence LLM recommendations in review instead of auto-applying them", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>AI agents may accelerate engineering teams</title></head><body>The evidence is noisy but mentions AI agents and engineering teams.</body></html>"
+      },
+      likelihoodEstimator: {
+        name: "llm",
+        estimate: async () => ({
+          estimator: "llm",
+          direction: "SUPPORTS",
+          relevance: 0.83,
+          likelihoodRatio: 1.8,
+          confidence: 0.31,
+          weight: 3,
+          rationale: "The evidence is relevant but too uncertain for automatic application.",
+          modelVersion: "deepseek:deepseek-chat",
+          abstain: false
+        })
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Low confidence page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/agent-low-confidence",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.7
+    });
+
+    const run = await services.sources.runSource(source.id);
+    const observations = await services.observations.listObservations();
+    const evidence = await services.evidence.listEvidence();
+    const updates = await services.updates.listEvents();
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+
+    expect(run.candidateCount).toBe(1);
+    expect(run.autoAppliedCount).toBe(0);
+    expect(run.reviewCount).toBe(1);
+    expect(observations[0].metadata).toMatchObject({
+      recommendedLinks: [
+        {
+          hypothesisId: belief.hypotheses[0].id,
+          relevance: 0.83,
+          confidence: 0.31,
+          likelihoodRatio: 1.8
+        }
+      ],
+      reviewReason: "QUALITY_THRESHOLD"
+    });
+    expect(evidence).toHaveLength(0);
+    expect(updates).toHaveLength(0);
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
+  });
+
   it("generates likelihood runs, applies updates, and rolls them back", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const belief = await services.beliefs.createBelief({
@@ -723,6 +889,67 @@ describe("world model services", () => {
     expect(events.filter((event) => event.status === "ROLLED_BACK")).toHaveLength(1);
     expect(events.filter((event) => event.status === "APPLIED")).toHaveLength(1);
     expect(updatedBelief?.hypotheses[1].currentProbability).toBeLessThan(0.4);
+  });
+
+  it("rejects cross-belief evidence links before rolling back the existing update", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+    const sourceBelief = await services.beliefs.createBelief({
+      title: "Source belief",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [{ proposition: "Agents accelerate source workflows", priorProbability: 0.4, notes: "" }]
+    });
+    const otherBelief = await services.beliefs.createBelief({
+      title: "Other belief",
+      category: "CAREER",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [{ proposition: "Career focus shifts to product strategy", priorProbability: 0.3, notes: "" }]
+    });
+    const observation = await services.observations.createObservation({
+      title: "Source evidence",
+      content: "Agents accelerate source workflows.",
+      credibility: 0.8
+    });
+    const result = await services.evidence.confirmAndApplyObservation({
+      observationId: observation.id,
+      confirmationMode: "MANUAL",
+      links: [
+        {
+          hypothesisId: sourceBelief.hypotheses[0].id,
+          direction: "SUPPORTS",
+          relevance: 0.8,
+          likelihoodRatio: 2,
+          confidence: 0.7,
+          rationale: "Initial source link."
+        }
+      ]
+    });
+    const appliedBelief = await services.beliefs.getBelief(sourceBelief.id);
+
+    await expect(
+      services.evidence.connectHypothesis(result.evidence.id, {
+        hypothesisId: otherBelief.hypotheses[0].id,
+        direction: "SUPPORTS",
+        relevance: 0.7,
+        likelihoodRatio: 1.5,
+        confidence: 0.6,
+        rationale: "Invalid cross-belief connection."
+      })
+    ).rejects.toThrow("Evidence links must target hypotheses under one belief.");
+    const evidence = await services.evidence.listEvidence();
+    const events = await services.updates.listEvents();
+    const unchangedBelief = await services.beliefs.getBelief(sourceBelief.id);
+
+    expect(evidence[0].links).toHaveLength(1);
+    expect(evidence[0].links[0].hypothesisId).toBe(sourceBelief.hypotheses[0].id);
+    expect(events).toHaveLength(1);
+    expect(events[0].status).toBe("APPLIED");
+    expect(unchangedBelief?.hypotheses[0].currentProbability).toBeCloseTo(
+      appliedBelief?.hypotheses[0].currentProbability ?? 0,
+      8
+    );
   });
 
   it("rejects applied evidence by rolling back its update before excluding it", async () => {

@@ -16,7 +16,7 @@ export default async function WorldModelGraphPage() {
     <main className="px-4 py-4 sm:px-6 lg:px-8">
       <DataWarning message={data.error} />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink/65">证据影响图谱</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink/65">证据影响图谱 · 图谱工作区</h2>
         <Link
           href="/admin/world-model/evidence"
           className="inline-flex min-h-9 items-center rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"

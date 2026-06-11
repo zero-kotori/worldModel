@@ -319,6 +319,23 @@ function estimatorDirection(output: EstimatorOutput): "SUPPORTS" | "OPPOSES" | "
   return "NEUTRAL";
 }
 
+function canAutoApplyLinks(links: ConfirmEvidenceInput["links"], threshold: number) {
+  return links.every(
+    (link) =>
+      link.direction !== "NEUTRAL" &&
+      link.relevance >= threshold &&
+      link.confidence >= threshold &&
+      Number.isFinite(link.likelihoodRatio) &&
+      link.likelihoodRatio > 0
+  );
+}
+
+function candidateReviewReason(input: { reviewOnly?: boolean; autoConfirm: boolean }) {
+  if (input.reviewOnly) return "REVIEW_ONLY";
+  if (!input.autoConfirm) return "SOURCE_REQUIRES_REVIEW";
+  return "QUALITY_THRESHOLD";
+}
+
 export function createWorldModelServices(
   store: WorldModelStore,
   options: WorldModelServiceOptions = {}
@@ -479,6 +496,19 @@ export function createWorldModelServices(
     }
   }
 
+  async function assertLinksTargetOneBelief(links: Array<{ hypothesisId: string }>) {
+    const hypotheses = await Promise.all(links.map((link) => store.getHypothesis(link.hypothesisId)));
+    const missingIndex = hypotheses.findIndex((hypothesis) => !hypothesis);
+    if (missingIndex >= 0) {
+      throw new Error(`Hypothesis not found: ${links[missingIndex].hypothesisId}`);
+    }
+
+    const beliefIds = new Set(hypotheses.map((hypothesis) => hypothesis?.beliefId));
+    if (beliefIds.size > 1) {
+      throw new Error("Evidence links must target hypotheses under one belief.");
+    }
+  }
+
   async function renormalizeMutuallyExclusiveBelief(beliefId: string) {
     const belief = await store.getBelief(beliefId);
     if (!belief || belief.probabilityMode !== "MUTUALLY_EXCLUSIVE" || belief.hypotheses.length === 0) return;
@@ -527,6 +557,9 @@ export function createWorldModelServices(
     if (existing.status === "REJECTED") throw new Error(`Evidence is rejected and cannot be edited: ${existing.title}`);
 
     const parsed = updateEvidenceSchema.parse(input);
+    if (parsed.links) {
+      await assertLinksTargetOneBelief(parsed.links);
+    }
     await rollbackAppliedEvidenceEvents(evidenceId);
     const updatedAt = now();
     const links = parsed.links?.map((link) => ({
@@ -622,39 +655,45 @@ export function createWorldModelServices(
     const best = ranked[0];
     if (!best) return [];
 
-    if (options.likelihoodEstimator) {
-      const output = await options.likelihoodEstimator.estimate({
-        evidenceText: `${observation.title}\n${observation.content}`,
-        hypothesis: best.hypothesis.proposition,
-        category: best.belief.category,
-        sourceCredibility: observation.credibility,
-        context: `${best.belief.title}\n${best.belief.description}\n${best.hypothesis.notes}`
-      });
+    const selected = ranked.filter((candidate) => candidate.belief.id === best.belief.id);
+    const links: ConfirmEvidenceInput["links"] = [];
 
-      if (isUsableEstimatorOutput(output)) {
-        return [
-          {
-            hypothesisId: best.hypothesis.id,
+    for (const candidate of selected) {
+      if (options.likelihoodEstimator) {
+        const output = await options.likelihoodEstimator.estimate({
+          evidenceText: `${observation.title}\n${observation.content}`,
+          hypothesis: candidate.hypothesis.proposition,
+          category: candidate.belief.category,
+          sourceCredibility: observation.credibility,
+          context: `${candidate.belief.title}\n${candidate.belief.description}\n${candidate.hypothesis.notes}`
+        });
+
+        if (isUsableEstimatorOutput(output)) {
+          links.push({
+            hypothesisId: candidate.hypothesis.id,
             direction: estimatorDirection(output),
-            relevance: output.relevance ?? Math.min(1, Math.max(0.1, best.score)),
+            relevance: output.relevance ?? Math.min(1, Math.max(0.1, candidate.score)),
             likelihoodRatio: output.likelihoodRatio ?? 1,
             confidence: output.confidence ?? 0.1,
-            rationale: output.rationale ?? `LLM 自动关联到「${best.belief.title}」下的假设：${best.hypothesis.proposition}`
-          }
-        ];
+            rationale:
+              output.rationale ??
+              `LLM 自动关联到「${candidate.belief.title}」下的假设：${candidate.hypothesis.proposition}`
+          });
+          continue;
+        }
       }
+
+      links.push({
+        hypothesisId: candidate.hypothesis.id,
+        direction: "SUPPORTS",
+        relevance: Math.min(1, Math.max(0.1, candidate.score)),
+        likelihoodRatio: 1 + Math.min(2, candidate.score * 2),
+        confidence: Math.min(0.95, Math.max(0.1, candidate.score)),
+        rationale: `自动关联到「${candidate.belief.title}」下的假设：${candidate.hypothesis.proposition}`
+      });
     }
 
-    return [
-      {
-        hypothesisId: best.hypothesis.id,
-        direction: "SUPPORTS",
-        relevance: Math.min(1, Math.max(0.1, best.score)),
-        likelihoodRatio: 1 + Math.min(2, best.score * 2),
-        confidence: Math.min(0.95, Math.max(0.1, best.score)),
-        rationale: `自动关联到「${best.belief.title}」下的假设：${best.hypothesis.proposition}`
-      }
-    ];
+    return links;
   }
 
   async function generateEvidenceLoopQueries(loopOptions: EvidenceLoopOptions = {}): Promise<EvidenceLoopQuery[]> {
@@ -756,7 +795,17 @@ export function createWorldModelServices(
         }
 
         candidateCount += 1;
-        if (runOptions.reviewOnly || !source.autoConfirm) {
+        if (runOptions.reviewOnly || !source.autoConfirm || !canAutoApplyLinks(links, threshold)) {
+          await store.updateObservation(observation.id, {
+            metadata: {
+              ...observation.metadata,
+              recommendedLinks: links,
+              reviewReason: candidateReviewReason({
+                reviewOnly: runOptions.reviewOnly,
+                autoConfirm: source.autoConfirm
+              })
+            }
+          });
           reviewCount += 1;
           continue;
         }

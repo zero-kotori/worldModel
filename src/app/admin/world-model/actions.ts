@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { getWorldModelServices } from "@/server/services";
+import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import type { BeliefCategory, HypothesisStance, ObservationSourceKind } from "@/server/services/types";
 
 function text(formData: FormData, key: string) {
@@ -155,6 +156,22 @@ export async function rejectObservationAction(formData: FormData) {
   await runAction("/admin/world-model/observations", "观察已拒绝", async () => {
     const services = getWorldModelServices();
     await services.observations.rejectObservation(text(formData, "observationId"));
+  });
+}
+
+export async function confirmRecommendedEvidenceAction(formData: FormData) {
+  await runAction("/admin/world-model/observations", "推荐证据已确认并应用更新", async () => {
+    const services = getWorldModelServices();
+    const observationId = text(formData, "observationId");
+    const observation = (await services.observations.listObservations()).find((item) => item.id === observationId);
+    if (!observation) throw new Error(`Observation not found: ${observationId}`);
+    const links = getObservationRecommendedLinks(observation);
+    if (links.length === 0) throw new Error("该观察没有可确认的推荐关联。");
+    await services.evidence.confirmAndApplyObservation({
+      observationId,
+      confirmationMode: "MANUAL",
+      links
+    });
   });
 }
 

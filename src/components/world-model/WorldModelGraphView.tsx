@@ -21,7 +21,7 @@ import {
 } from "@/app/admin/world-model/actions";
 import type { WorldModelGraph, WorldModelGraphNode, WorldModelGraphNodeType } from "@/lib/world-model-graph";
 import type { WorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
-import { graphInteractionOptions } from "@/lib/world-model-graph-ui";
+import { createGraphInteractionOptions } from "@/lib/world-model-graph-ui";
 import { categoryLabels, evidenceDirectionLabels, hypothesisStanceLabels, probabilityModeLabels } from "@/lib/world-model-navigation";
 
 const nodeLayers: Record<WorldModelGraphNodeType, number> = {
@@ -482,6 +482,11 @@ export function WorldModelGraphView({
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null);
+  const [embeddedPanActivated, setEmbeddedPanActivated] = useState(false);
+  const interactionOptions = useMemo(
+    () => createGraphInteractionOptions({ mode, panActivated: embeddedPanActivated }),
+    [embeddedPanActivated, mode]
+  );
 
   useEffect(() => {
     setNodes(mergeSavedPositions(initialNodes, storageKey));
@@ -527,7 +532,16 @@ export function WorldModelGraphView({
 
   return (
     <div className={rootClass}>
-      <div className={`${canvasHeightClass} overflow-hidden rounded-md border border-line bg-white`}>
+      <div
+        className={`${canvasHeightClass} overflow-hidden rounded-md border border-line bg-white`}
+        data-graph-pan-active={mode === "workspace" || embeddedPanActivated}
+        onPointerDownCapture={() => {
+          if (mode === "embedded") setEmbeddedPanActivated(true);
+        }}
+        onMouseLeave={() => {
+          if (mode === "embedded") setEmbeddedPanActivated(false);
+        }}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -543,7 +557,7 @@ export function WorldModelGraphView({
           }}
           nodesDraggable
           nodesConnectable
-          {...graphInteractionOptions}
+          {...interactionOptions}
         >
           <Background gap={22} size={1} />
         </ReactFlow>
