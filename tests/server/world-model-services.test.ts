@@ -1683,4 +1683,31 @@ describe("world model services", () => {
     expect(sources.filter((source) => source.url === "https://rss.arxiv.org/rss/cs.AI")).toHaveLength(1);
     expect(updatedPresets.find((preset) => preset.id === "arxiv-cs-ai")?.installed).toBe(true);
   });
+
+  it("creates all missing public source presets without duplicating installed presets", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+    const installedPreset = sourcePresetDefinitions[0];
+    await services.sources.createSource({
+      name: installedPreset.name,
+      kind: installedPreset.kind,
+      url: installedPreset.url,
+      adapter: installedPreset.adapter,
+      credentialRef: installedPreset.credentialRef,
+      credibility: installedPreset.credibility,
+      enabled: installedPreset.enabled,
+      autoConfirm: installedPreset.autoConfirm,
+      autoConfirmThreshold: installedPreset.autoConfirmThreshold
+    });
+
+    const created = await services.sources.createMissingPresets();
+    const createdAgain = await services.sources.createMissingPresets();
+    const sources = await services.sources.listSources();
+    const presets = await services.sources.listPresets();
+
+    expect(created).toHaveLength(sourcePresetDefinitions.length - 1);
+    expect(created.map((source) => source.name)).not.toContain(installedPreset.name);
+    expect(createdAgain).toEqual([]);
+    expect(sources).toHaveLength(sourcePresetDefinitions.length);
+    expect(presets.every((preset) => preset.installed)).toBe(true);
+  });
 });

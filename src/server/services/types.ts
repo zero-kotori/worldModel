@@ -425,6 +425,7 @@ export type WorldModelServices = {
     listSources(): Promise<ObservationSourceRecord[]>;
     listPresets(): Promise<SourcePresetRecord[]>;
     createPreset(id: string): Promise<ObservationSourceRecord>;
+    createMissingPresets(): Promise<ObservationSourceRecord[]>;
     createSource(input: CreateSourceInput): Promise<ObservationSourceRecord>;
     runDryRun(sourceId: string, observations: RawObservationInput[]): Promise<ObservationRunRecord>;
     runSource(sourceId: string, options?: RunSourceOptions): Promise<ObservationRunRecord>;

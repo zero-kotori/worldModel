@@ -993,6 +993,15 @@ export function createWorldModelServices(
     return created;
   }
 
+  async function createMissingSourcePresetRecords() {
+    const missingPresets = listSourcePresets(await store.listSources()).filter((preset) => !preset.installed);
+    const created = [];
+    for (const preset of missingPresets) {
+      created.push(await createSourcePresetRecord(preset.id));
+    }
+    return created;
+  }
+
   async function runSource(sourceId: string, runOptions: RunSourceOptions = {}) {
     const source = await store.getSource(sourceId);
     if (!source) throw new Error(`Source not found: ${sourceId}`);
@@ -1306,6 +1315,9 @@ export function createWorldModelServices(
       },
       async createPreset(id: string) {
         return createSourcePresetRecord(id);
+      },
+      async createMissingPresets() {
+        return createMissingSourcePresetRecords();
       },
       async createSource(input: CreateSourceInput) {
         const parsed = sourceSchema.parse(input);
