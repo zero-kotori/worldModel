@@ -10,7 +10,7 @@ import {
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { listSourcePresets } from "@/lib/world-model-source-presets";
-import { getLatestSourceRun, runErrorSummary, sourceHealthLabel } from "@/lib/world-model-sources-ui";
+import { getLatestSourceRun, runErrorSummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
 
@@ -24,6 +24,13 @@ function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function healthToneClass(tone: ReturnType<typeof summarizeAutomationHealth>["tone"]) {
+  if (tone === "healthy") return "text-moss";
+  if (tone === "warning") return "text-amber-700";
+  if (tone === "failing") return "text-berry";
+  return "text-ink/55";
+}
+
 export default async function SourcesPage({ searchParams }: PageProps) {
   const data = await loadWorldModelData();
   const params = (await searchParams) ?? {};
@@ -34,12 +41,49 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   }));
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
   const sourcePresets = listSourcePresets(data.sources);
+  const automationHealth = summarizeAutomationHealth(data.runs);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
       <DataWarning message={data.error} />
       <StatusNotice message={firstParam(params.message)} />
       <StatusNotice message={firstParam(params.error)} tone="error" />
+      <PageSection title="自动闭环状态">
+        <div className="rounded-md border border-line bg-white p-4">
+          <div className="grid gap-4 text-sm lg:grid-cols-6">
+            <div>
+              <div className="text-xs text-ink/55">状态</div>
+              <div className={`mt-1 font-semibold ${healthToneClass(automationHealth.tone)}`}>{automationHealth.label}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">最近运行</div>
+              <div className="mt-1 text-ink">{automationHealth.latestRunAt?.toLocaleString("zh-CN") ?? ""}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">最近成功</div>
+              <div className="mt-1 text-ink">{automationHealth.lastSuccessAt?.toLocaleString("zh-CN") ?? ""}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">连续失败</div>
+              <div className="mt-1 text-ink">{automationHealth.consecutiveFailureCount}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">最近候选</div>
+              <div className="mt-1 text-ink">
+                {automationHealth.latestCounts.candidateCount} / {automationHealth.latestCounts.autoAppliedCount} /{" "}
+                {automationHealth.latestCounts.reviewCount}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">最近采集</div>
+              <div className="mt-1 text-ink">{automationHealth.latestCounts.itemCount}</div>
+            </div>
+          </div>
+          {automationHealth.latestError ? (
+            <div className="mt-3 border-t border-line pt-3 text-xs text-berry">{automationHealth.latestError}</div>
+          ) : null}
+        </div>
+      </PageSection>
       <PageSection title="推荐来源">
         <div className="grid gap-3 lg:grid-cols-2">
           {sourcePresets.map((preset) => (

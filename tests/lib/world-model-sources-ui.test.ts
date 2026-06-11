@@ -1,4 +1,4 @@
-import { getLatestSourceRun, runErrorSummary, sourceHealthLabel } from "@/lib/world-model-sources-ui";
+import { getLatestSourceRun, runErrorSummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
 import type { ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
 
 function source(id: string, enabled = true): ObservationSourceRecord {
@@ -84,5 +84,61 @@ describe("world model sources UI", () => {
 
     expect(message).toHaveLength(121);
     expect(message.endsWith("...")).toBe(true);
+  });
+
+  it("summarizes idle automation health without run records", () => {
+    expect(summarizeAutomationHealth([])).toEqual({
+      label: "未运行",
+      tone: "idle",
+      consecutiveFailureCount: 0,
+      latestRunAt: undefined,
+      lastSuccessAt: undefined,
+      latestError: "",
+      latestCounts: {
+        itemCount: 0,
+        candidateCount: 0,
+        autoAppliedCount: 0,
+        reviewCount: 0
+      }
+    });
+  });
+
+  it("summarizes consecutive automation failures with the latest success", () => {
+    const health = summarizeAutomationHealth([
+      run({ id: "success", sourceId: "source_1", status: "SUCCESS", startedAt: new Date("2026-06-11T01:00:00.000Z") }),
+      run({
+        id: "failed-1",
+        sourceId: "source_1",
+        status: "FAILED",
+        startedAt: new Date("2026-06-11T02:00:00.000Z"),
+        errorMessage: "network timeout while collecting evidence"
+      }),
+      run({
+        id: "failed-2",
+        sourceId: "source_2",
+        status: "FAILED",
+        startedAt: new Date("2026-06-11T03:00:00.000Z"),
+        itemCount: 3,
+        candidateCount: 1,
+        autoAppliedCount: 0,
+        reviewCount: 1,
+        errorMessage: "source endpoint unavailable"
+      })
+    ]);
+
+    expect(health).toMatchObject({
+      label: "连续失败",
+      tone: "failing",
+      consecutiveFailureCount: 2,
+      latestRunAt: new Date("2026-06-11T03:00:00.000Z"),
+      lastSuccessAt: new Date("2026-06-11T01:00:00.000Z"),
+      latestError: "source endpoint unavailable",
+      latestCounts: {
+        itemCount: 3,
+        candidateCount: 1,
+        autoAppliedCount: 0,
+        reviewCount: 1
+      }
+    });
   });
 });
