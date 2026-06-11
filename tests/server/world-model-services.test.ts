@@ -515,6 +515,71 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("uses generated hypothesis queries when running a query-template RSS source directly", async () => {
+    const requestedUrls: string[] = [];
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async (url) => {
+          requestedUrls.push(url);
+          return `<?xml version="1.0"?>
+            <rss><channel>
+              <item>
+                <title>Remote AI product roles grow</title>
+                <link>https://example.com/career-query-evidence</link>
+                <description>Remote AI product roles grow as teams adopt AI product operations.</description>
+              </item>
+            </channel></rss>`;
+        }
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "Career direction",
+      category: "CAREER",
+      description: "Track career market signals.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "Remote AI product roles grow",
+          priorProbability: 0.4,
+          stance: "SUPPORTS",
+          notes: "market demand"
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Query RSS",
+      kind: "RSS",
+      url: "https://news.example/rss?q={query}",
+      adapter: "rss_query",
+      credentialRef: undefined,
+      credibility: 0.75,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.85
+    });
+
+    const run = await services.sources.runSource(source.id, {
+      reviewOnly: true,
+      candidateThreshold: 0.2,
+      maxObservations: 1
+    });
+    const observations = await services.observations.listObservations();
+
+    expect(run).toMatchObject({
+      status: "REVIEW_ONLY",
+      queryCount: 1,
+      itemCount: 1,
+      candidateCount: 1,
+      reviewCount: 1
+    });
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain("Career%20direction");
+    expect(requestedUrls[0]).toContain("Remote%20AI%20product%20roles%20grow");
+    expect(observations[0].metadata).toMatchObject({
+      query: expect.stringContaining("Remote AI product roles grow")
+    });
+  });
+
   it("continues an evidence loop when one enabled source fails and another succeeds", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {

@@ -1007,7 +1007,8 @@ export function createWorldModelServices(
     if (!source) throw new Error(`Source not found: ${sourceId}`);
     if (!source.enabled) throw new Error(`Source is disabled: ${source.name}`);
 
-    const querySummary = runOptions.queries ?? [];
+    const querySummary =
+      runOptions.queries ?? (source.url?.includes("{query}") ? await generateEvidenceLoopQueries() : []);
     const startedAt = now();
     try {
       const adapter = createSourceAdapter(source.kind, options.sourceAdapterDependencies);
