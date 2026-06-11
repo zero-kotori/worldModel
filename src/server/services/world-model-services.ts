@@ -80,7 +80,10 @@ const independentBeliefSchema = createBeliefSchema.extend({
         proposition: z.string(),
         priorProbability: probabilitySchema,
         stance: z.enum(["SUPPORTS", "OPPOSES"]).optional(),
-        notes: z.string().optional()
+        notes: z.string().optional(),
+        startsAt: z.date().optional(),
+        expiresAt: z.date().optional(),
+        expiryCondition: z.string().optional()
       })
     )
   )
@@ -231,6 +234,14 @@ function parseBeliefInput(input: CreateBeliefInput) {
 
 function now() {
   return new Date();
+}
+
+function isCurrentlyEffectiveHypothesis(hypothesis: HypothesisRecord, referenceTime = now()) {
+  if (hypothesis.status !== "ACTIVE") return false;
+  const referenceMs = referenceTime.getTime();
+  if (hypothesis.startsAt && hypothesis.startsAt.getTime() > referenceMs) return false;
+  if (hypothesis.expiresAt && hypothesis.expiresAt.getTime() <= referenceMs) return false;
+  return true;
 }
 
 function createHypotheses(input: CreateBeliefInput, beliefId: string): HypothesisRecord[] {
@@ -833,7 +844,7 @@ export function createWorldModelServices(
     const ranked = beliefs
       .flatMap((belief) =>
         belief.hypotheses
-          .filter((hypothesis) => hypothesis.status === "ACTIVE")
+          .filter((hypothesis) => isCurrentlyEffectiveHypothesis(hypothesis))
           .map((hypothesis) => {
             const score = overlapScore(signal, `${belief.title} ${hypothesis.proposition} ${hypothesis.notes}`);
             return { belief, hypothesis, score };
@@ -970,10 +981,11 @@ export function createWorldModelServices(
     });
     const seen = new Set<string>();
     const queries: EvidenceLoopQuery[] = [];
+    const referenceTime = now();
 
     for (const belief of beliefs) {
       for (const hypothesis of belief.hypotheses) {
-        if (hypothesis.status !== "ACTIVE") continue;
+        if (!isCurrentlyEffectiveHypothesis(hypothesis, referenceTime)) continue;
         const query = compactSearchQuery([belief.title, hypothesis.proposition, hypothesis.notes]);
         const key = `${hypothesis.id}:${query}`;
         if (!query || seen.has(key)) continue;

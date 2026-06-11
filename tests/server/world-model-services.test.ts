@@ -515,6 +515,67 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("generates evidence loop queries only for currently effective hypotheses", async () => {
+    const requestedUrls: string[] = [];
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async (url) => {
+          requestedUrls.push(url);
+          return "<html><head><title>AI governance adoption changes audit workflows</title></head><body>AI governance adoption changes audit workflows in regulated teams.</body></html>";
+        }
+      }
+    });
+    const now = Date.now();
+    await services.beliefs.createBelief({
+      title: "AI governance",
+      category: "AI_TREND",
+      description: "Track governance adoption.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "Expired AI governance pilots dominate audit workflows",
+          priorProbability: 0.25,
+          stance: "SUPPORTS",
+          notes: "expired signal",
+          expiresAt: new Date(now - 60_000)
+        },
+        {
+          proposition: "Future AI governance regulation reshapes audit workflows",
+          priorProbability: 0.25,
+          stance: "SUPPORTS",
+          notes: "future signal",
+          startsAt: new Date(now + 86_400_000)
+        },
+        {
+          proposition: "AI governance adoption changes audit workflows",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "current signal"
+        }
+      ]
+    });
+    await services.sources.createSource({
+      name: "Search adapter",
+      kind: "SEARCH",
+      url: "https://example.com/search?q={query}",
+      adapter: "search",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.85
+    });
+
+    const loop = await services.automation.runEvidenceLoop({ reviewOnly: true, maxObservations: 1 });
+
+    expect(loop.queryCount).toBe(1);
+    expect(loop.queries[0].query).toContain("AI governance adoption changes audit workflows");
+    expect(loop.queries[0].query).not.toContain("Expired");
+    expect(loop.queries[0].query).not.toContain("Future");
+    expect(requestedUrls).toHaveLength(1);
+    expect(requestedUrls[0]).toContain("adoption%20changes%20audit%20workflows");
+  });
+
   it("deduplicates overlapping belief and hypothesis text in generated search queries", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {
@@ -910,6 +971,58 @@ describe("world model services", () => {
     expect(run.sourceId).toBeUndefined();
     expect(run.errorMessage).toContain("ObservationRun_sourceId_fkey");
     await expect(services.sources.listRuns()).resolves.toEqual([run]);
+  });
+
+  it("does not recommend source observations for expired hypotheses", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>Expired governance pilot dominates audit workflows</title></head><body>Expired governance pilot dominates audit workflows across the organization.</body></html>"
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "AI governance",
+      category: "AI_TREND",
+      description: "Track governance adoption.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "Expired governance pilot dominates audit workflows",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "expired signal",
+          expiresAt: new Date(Date.now() - 60_000)
+        },
+        {
+          proposition: "Current compliance platform pricing changes procurement timing",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "current signal"
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Governance page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/governance",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+
+    const run = await services.sources.runSource(source.id, { candidateThreshold: 0.2 });
+    const evidence = await services.evidence.listEvidence();
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+
+    expect(run.status).toBe("SUCCESS");
+    expect(run.candidateCount).toBe(0);
+    expect(run.autoAppliedCount).toBe(0);
+    expect(run.reviewCount).toBe(1);
+    expect(evidence).toHaveLength(0);
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
   it("uses the LLM scorer as the primary likelihood source for auto-confirmed evidence", async () => {
