@@ -248,4 +248,38 @@ describe("world model sources UI", () => {
       tone: "healthy"
     });
   });
+
+  it("prefers active worker runtime over stale heartbeat status", () => {
+    const health = summarizeAutomationHealth(
+      [],
+      [
+        heartbeat({
+          id: "default",
+          status: "IDLE",
+          heartbeatAt: new Date("2026-06-11T04:00:00.000Z"),
+          intervalMs: 900_000
+        })
+      ],
+      {
+        referenceTime: new Date("2026-06-11T05:00:00.000Z"),
+        workerRuntime: [
+          {
+            workerId: "default",
+            running: true,
+            nextRunAt: new Date("2026-06-11T05:15:00.000Z"),
+            consecutiveFailureCount: 0
+          }
+        ]
+      }
+    );
+
+    expect(health.worker).toMatchObject({
+      id: "default",
+      status: "RUNNING",
+      label: "运行中",
+      tone: "healthy",
+      nextRunAt: new Date("2026-06-11T05:15:00.000Z"),
+      consecutiveFailureCount: 0
+    });
+  });
 });

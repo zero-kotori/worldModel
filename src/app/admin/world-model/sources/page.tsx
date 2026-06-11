@@ -59,7 +59,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   }));
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
   const sourcePresets = listSourcePresets(data.sources);
-  const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats);
+  const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, { workerRuntime: data.workerRuntime });
   const workerConfig = data.workerConfigs[0] ?? fallbackWorkerConfig();
   const stopWorkerId =
     automationHealth.worker.status && automationHealth.worker.status !== "IDLE"

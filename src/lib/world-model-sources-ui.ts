@@ -1,6 +1,18 @@
 import type { AutomationHeartbeatRecord, ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
 
 type AutomationHealthTone = "idle" | "healthy" | "warning" | "failing";
+type AutomationWorkerRuntime = {
+  workerId: string;
+  running: boolean;
+  nextRunAt?: Date;
+  consecutiveFailureCount: number;
+};
+type AutomationHealthOptions =
+  | Date
+  | {
+      referenceTime?: Date;
+      workerRuntime?: AutomationWorkerRuntime[];
+    };
 type AutomationWorkerSummary = {
   id?: string;
   status?: AutomationHeartbeatRecord["status"];
@@ -70,7 +82,39 @@ function workerSummaryBase(heartbeat: AutomationHeartbeatRecord): Omit<Automatio
   };
 }
 
-function summarizeWorker(heartbeats: AutomationHeartbeatRecord[] = [], referenceTime = new Date()): AutomationWorkerSummary {
+function latestHeartbeatForWorker(heartbeats: AutomationHeartbeatRecord[], workerId: string) {
+  return latestHeartbeat(heartbeats.filter((heartbeat) => heartbeat.id === workerId));
+}
+
+function summarizeRuntimeWorker(
+  runtime: AutomationWorkerRuntime[] = [],
+  heartbeats: AutomationHeartbeatRecord[] = []
+): AutomationWorkerSummary | undefined {
+  const worker = runtime.find((item) => item.running);
+  if (!worker) return undefined;
+  const heartbeat = latestHeartbeatForWorker(heartbeats, worker.workerId);
+  const hasFailures = worker.consecutiveFailureCount > 0 || heartbeat?.status === "ERROR";
+  return {
+    id: worker.workerId,
+    status: hasFailures ? "ERROR" : "RUNNING",
+    label: hasFailures ? "等待重试" : "运行中",
+    tone: hasFailures ? (worker.consecutiveFailureCount >= 2 ? "failing" : "warning") : "healthy",
+    latestHeartbeatAt: heartbeat?.heartbeatAt,
+    nextRunAt: worker.nextRunAt ?? heartbeat?.nextRunAt,
+    intervalMs: heartbeat?.intervalMs,
+    consecutiveFailureCount: worker.consecutiveFailureCount,
+    lastError: truncateErrorMessage(heartbeat?.lastError)
+  };
+}
+
+function summarizeWorker(
+  heartbeats: AutomationHeartbeatRecord[] = [],
+  referenceTime = new Date(),
+  runtime: AutomationWorkerRuntime[] = []
+): AutomationWorkerSummary {
+  const runtimeSummary = summarizeRuntimeWorker(runtime, heartbeats);
+  if (runtimeSummary) return runtimeSummary;
+
   const heartbeat = latestHeartbeat(heartbeats);
   if (!heartbeat) {
     return {
@@ -117,10 +161,20 @@ function summarizeWorker(heartbeats: AutomationHeartbeatRecord[] = [], reference
   };
 }
 
+function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
+  if (options instanceof Date) {
+    return { referenceTime: options, workerRuntime: [] };
+  }
+  return {
+    referenceTime: options?.referenceTime ?? new Date(),
+    workerRuntime: options?.workerRuntime ?? []
+  };
+}
+
 export function summarizeAutomationHealth(
   runs: ObservationRunRecord[],
   heartbeats: AutomationHeartbeatRecord[] = [],
-  referenceTime = new Date()
+  options?: AutomationHealthOptions
 ): {
   label: string;
   tone: AutomationHealthTone;
@@ -131,9 +185,10 @@ export function summarizeAutomationHealth(
   latestCounts: Pick<ObservationRunRecord, "itemCount" | "candidateCount" | "autoAppliedCount" | "reviewCount">;
   worker: AutomationWorkerSummary;
 } {
+  const { referenceTime, workerRuntime } = normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
   const latestRun = orderedRuns[0];
-  const worker = summarizeWorker(heartbeats, referenceTime);
+  const worker = summarizeWorker(heartbeats, referenceTime, workerRuntime);
 
   if (!latestRun) {
     return {
