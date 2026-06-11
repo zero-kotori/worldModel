@@ -2,6 +2,7 @@ import Link from "next/link";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { DataWarning, PageSection } from "@/components/world-model/PageSection";
 import { WorldModelGraphView } from "@/components/world-model/WorldModelGraphView";
+import { isHypothesisCurrentlyEffective, summarizeHypothesisTimeCoverage } from "@/lib/world-model-beliefs-ui";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { createWorldModelGraph } from "@/lib/world-model-graph";
 import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
@@ -17,14 +18,18 @@ export default async function WorldModelDashboardPage() {
   const evidenceById = new Map(data.evidence.map((evidence) => [evidence.id, evidence]));
   const graph = createWorldModelGraph({ beliefs: data.beliefs, evidence: data.evidence, updates: data.updates });
   const graphEditor = createWorldModelGraphEditorData({ beliefs: data.beliefs, evidence: data.evidence, updates: data.updates });
-  const activeHypotheses = data.beliefs.flatMap((belief) => belief.hypotheses).filter((item) => item.status === "ACTIVE");
+  const referenceTime = new Date();
+  const hypothesisCoverage = summarizeHypothesisTimeCoverage(
+    data.beliefs.flatMap((belief) => belief.hypotheses),
+    referenceTime
+  );
   const pendingObservations = data.observations.filter((item) => item.status === "PENDING" || item.status === "DUPLICATE");
   const metrics = [
     ["信念", data.beliefs.length, "/admin/world-model/beliefs"],
-    ["活跃假设", activeHypotheses.length, "/admin/world-model/beliefs"],
+    ["当前有效假设", hypothesisCoverage.effectiveCount, "/admin/world-model/beliefs"],
+    ["待复核假设", hypothesisCoverage.reviewDueCount, "/admin/world-model/beliefs"],
     ["待处理观察", pendingObservations.length, "/admin/world-model/observations"],
-    ["已确认证据", data.evidence.length, "/admin/world-model/evidence"],
-    ["更新事件", data.updates.length, "/admin/world-model/evidence"]
+    ["已确认证据", data.evidence.length, "/admin/world-model/evidence"]
   ] as const;
 
   return (
@@ -48,13 +53,14 @@ export default async function WorldModelDashboardPage() {
           <div className="grid gap-3 lg:grid-cols-2">
             {data.beliefs.slice(0, 6).map((belief) => {
               const beliefCode = readableCode(beliefCodes, belief.id, "B");
-              const active = belief.hypotheses.filter((hypothesis) => hypothesis.status === "ACTIVE");
+              const coverage = summarizeHypothesisTimeCoverage(belief.hypotheses, referenceTime);
+              const effective = belief.hypotheses.filter((hypothesis) => isHypothesisCurrentlyEffective(hypothesis, referenceTime));
               const strength =
-                active.length === 0
+                effective.length === 0
                   ? 0
-                  : active.reduce((sum, hypothesis) => {
+                  : effective.reduce((sum, hypothesis) => {
                       return sum + (hypothesis.stance === "OPPOSES" ? 1 - hypothesis.currentProbability : hypothesis.currentProbability);
-                    }, 0) / active.length;
+                    }, 0) / effective.length;
               return (
                 <Link
                   key={belief.id}
@@ -67,7 +73,8 @@ export default async function WorldModelDashboardPage() {
                         {beliefCode} · {belief.title}
                       </h2>
                       <p className="mt-1 text-xs text-ink/55">
-                        {categoryLabels[belief.category]} · {active.length} 个活跃假设
+                        {categoryLabels[belief.category]} · {coverage.effectiveCount} 个当前有效假设
+                        {coverage.reviewDueCount > 0 ? ` · ${coverage.reviewDueCount} 个待复核` : ""}
                       </p>
                     </div>
                     <span className="rounded-md bg-moss/10 px-2 py-1 text-xs font-semibold text-moss">

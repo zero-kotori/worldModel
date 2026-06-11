@@ -35,6 +35,52 @@ export function hypothesisTimeStatus(hypothesis: HypothesisTimeInput, referenceT
   return { label: "当前有效", tone: "healthy" as const, detail: "" };
 }
 
+export function isHypothesisCurrentlyEffective(hypothesis: HypothesisTimeInput, referenceTime = new Date()) {
+  if (hypothesis.status !== "ACTIVE") return false;
+  const referenceMs = referenceTime.getTime();
+  if (hypothesis.startsAt && hypothesis.startsAt.getTime() > referenceMs) return false;
+  if (hypothesis.expiresAt && hypothesis.expiresAt.getTime() <= referenceMs) return false;
+  return true;
+}
+
+export function summarizeHypothesisTimeCoverage(hypotheses: HypothesisTimeInput[], referenceTime = new Date()) {
+  const coverage = {
+    activeCount: 0,
+    effectiveCount: 0,
+    expiringSoonCount: 0,
+    expiredCount: 0,
+    upcomingCount: 0,
+    inactiveCount: 0,
+    reviewDueCount: 0
+  };
+  const referenceMs = referenceTime.getTime();
+
+  for (const hypothesis of hypotheses) {
+    if (hypothesis.status !== "ACTIVE") {
+      coverage.inactiveCount += 1;
+      continue;
+    }
+    coverage.activeCount += 1;
+
+    if (!isHypothesisCurrentlyEffective(hypothesis, referenceTime)) {
+      if (hypothesis.startsAt && hypothesis.startsAt.getTime() > referenceMs) {
+        coverage.upcomingCount += 1;
+      } else {
+        coverage.expiredCount += 1;
+      }
+      continue;
+    }
+
+    coverage.effectiveCount += 1;
+    if (hypothesis.expiresAt && hypothesis.expiresAt.getTime() - referenceMs <= EXPIRING_SOON_MS) {
+      coverage.expiringSoonCount += 1;
+    }
+  }
+
+  coverage.reviewDueCount = coverage.expiredCount + coverage.expiringSoonCount;
+  return coverage;
+}
+
 export function datetimeLocalValue(value?: Date) {
   if (!value) return "";
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;

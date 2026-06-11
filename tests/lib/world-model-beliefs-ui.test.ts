@@ -1,4 +1,11 @@
-import { datetimeLocalValue, hypothesisTimeStatus, parseDateTimeLocalValue, parseDateTimePatchValue } from "@/lib/world-model-beliefs-ui";
+import {
+  datetimeLocalValue,
+  hypothesisTimeStatus,
+  isHypothesisCurrentlyEffective,
+  parseDateTimeLocalValue,
+  parseDateTimePatchValue,
+  summarizeHypothesisTimeCoverage
+} from "@/lib/world-model-beliefs-ui";
 
 describe("world model beliefs UI", () => {
   const referenceTime = new Date(2026, 5, 11, 9, 30, 0);
@@ -57,5 +64,35 @@ describe("world model beliefs UI", () => {
     expect(parsed).toBeInstanceOf(Date);
     expect(parseDateTimePatchValue("")).toBeNull();
     expect(parseDateTimePatchValue("not-a-date")).toBeUndefined();
+  });
+
+  it("summarizes hypothesis time coverage for dashboard maintenance counts", () => {
+    const coverage = summarizeHypothesisTimeCoverage(
+      [
+        { status: "ACTIVE" },
+        { status: "ACTIVE", expiresAt: new Date(2026, 5, 13, 9, 30, 0) },
+        { status: "ACTIVE", expiresAt: new Date(2026, 5, 10, 9, 30, 0) },
+        { status: "ACTIVE", startsAt: new Date(2026, 5, 12, 9, 30, 0) },
+        { status: "PAUSED" }
+      ],
+      referenceTime
+    );
+
+    expect(coverage).toEqual({
+      activeCount: 4,
+      effectiveCount: 2,
+      expiringSoonCount: 1,
+      expiredCount: 1,
+      upcomingCount: 1,
+      inactiveCount: 1,
+      reviewDueCount: 2
+    });
+  });
+
+  it("checks whether an active hypothesis is currently effective", () => {
+    expect(isHypothesisCurrentlyEffective({ status: "ACTIVE" }, referenceTime)).toBe(true);
+    expect(isHypothesisCurrentlyEffective({ status: "ACTIVE", expiresAt: new Date(2026, 5, 10, 9, 30, 0) }, referenceTime)).toBe(false);
+    expect(isHypothesisCurrentlyEffective({ status: "ACTIVE", startsAt: new Date(2026, 5, 12, 9, 30, 0) }, referenceTime)).toBe(false);
+    expect(isHypothesisCurrentlyEffective({ status: "PAUSED" }, referenceTime)).toBe(false);
   });
 });
