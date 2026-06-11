@@ -54,12 +54,18 @@ describe("observe CLI options", () => {
       "--repeat",
       "--interval-seconds",
       "120",
+      "--failure-backoff-multiplier",
+      "3",
+      "--max-interval-seconds",
+      "600",
       "--iterations",
       "3"
     ]);
 
     expect(options.repeat).toBe(true);
     expect(options.intervalMs).toBe(120_000);
+    expect(options.failureBackoffMultiplier).toBe(3);
+    expect(options.maxIntervalMs).toBe(600_000);
     expect(options.iterations).toBe(3);
   });
 
@@ -106,5 +112,59 @@ describe("observe CLI options", () => {
 
     expect(calls).toEqual([1, 2]);
     expect(results).toEqual([]);
+  });
+
+  it("backs off after failed task results and resets after success", async () => {
+    const waits: number[] = [];
+    const outcomes = [{ failureCount: 1 }, { failureCount: 0 }, { failureCount: 1 }];
+
+    await runRepeatedTask(
+      async (iteration) => outcomes[iteration - 1],
+      {
+        repeat: true,
+        iterations: 3,
+        intervalMs: 1000,
+        failureBackoffMultiplier: 2,
+        maxIntervalMs: 5000,
+        isFailure: (result) => result.failureCount > 0,
+        wait: async (ms) => {
+          waits.push(ms);
+        }
+      }
+    );
+
+    expect(waits).toEqual([2000, 1000]);
+  });
+
+  it("continues after task errors when configured and backs off before retrying", async () => {
+    const waits: number[] = [];
+    const errors: string[] = [];
+    const calls: number[] = [];
+
+    const results = await runRepeatedTask(
+      async (iteration) => {
+        calls.push(iteration);
+        if (iteration === 1) throw new Error("temporary failure");
+        return { ok: true };
+      },
+      {
+        repeat: true,
+        iterations: 2,
+        intervalMs: 1000,
+        failureBackoffMultiplier: 2,
+        continueOnError: true,
+        onError: async (error) => {
+          errors.push(error instanceof Error ? error.message : String(error));
+        },
+        wait: async (ms) => {
+          waits.push(ms);
+        }
+      }
+    );
+
+    expect(calls).toEqual([1, 2]);
+    expect(errors).toEqual(["temporary failure"]);
+    expect(waits).toEqual([2000]);
+    expect(results).toEqual([{ ok: true }]);
   });
 });
