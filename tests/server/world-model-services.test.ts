@@ -515,6 +515,87 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("deduplicates overlapping belief and hypothesis text in generated search queries", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>AI agents accelerate engineering teams</title></head><body>AI agents accelerate engineering teams enterprise rollout evidence.</body></html>"
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "AI agents accelerate engineering teams",
+      category: "AI_TREND",
+      description: "Track agent adoption.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "AI agents accelerate engineering teams enterprise rollout"
+        }
+      ]
+    });
+    await services.sources.createSource({
+      name: "Search adapter",
+      kind: "SEARCH",
+      url: "https://example.com/search?q={query}",
+      adapter: "search",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.85
+    });
+
+    const loop = await services.automation.runEvidenceLoop({ reviewOnly: true, maxObservations: 1 });
+    const query = loop.queries[0].query;
+
+    expect(query.match(/AI agents accelerate engineering teams/g)).toHaveLength(1);
+    expect(query).toContain("enterprise rollout");
+  });
+
+  it("keeps only one shared prefix when generated query parts add different trailing signals", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>AI agents accelerate engineering teams</title></head><body>AI agents accelerate engineering teams acceptance evidence.</body></html>"
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "AI agents accelerate engineering teams acceptance-123",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams acceptance-123",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "AI agents accelerate engineering teams acceptance evidence"
+        }
+      ]
+    });
+    await services.sources.createSource({
+      name: "Search adapter",
+      kind: "SEARCH",
+      url: "https://example.com/search?q={query}",
+      adapter: "search",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.85
+    });
+
+    const loop = await services.automation.runEvidenceLoop({ reviewOnly: true, maxObservations: 1 });
+    const query = loop.queries[0].query;
+
+    expect(query.match(/AI agents accelerate engineering teams/g)).toHaveLength(1);
+    expect(query).toContain("acceptance-123");
+    expect(query).toContain("evidence");
+  });
+
   it("uses generated hypothesis queries when running a query-template RSS source directly", async () => {
     const requestedUrls: string[] = [];
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {

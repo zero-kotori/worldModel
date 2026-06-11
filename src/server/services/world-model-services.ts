@@ -912,6 +912,54 @@ export function createWorldModelServices(
     return links;
   }
 
+  function normalizeQueryPart(value: string) {
+    return value.toLowerCase().replace(/\s+/g, " ").trim();
+  }
+
+  function queryTokens(value: string) {
+    return normalizeQueryPart(value).split(" ").filter(Boolean);
+  }
+
+  function sharedPrefixLength(left: string[], right: string[]) {
+    let index = 0;
+    while (index < left.length && index < right.length && left[index] === right[index]) {
+      index += 1;
+    }
+    return index;
+  }
+
+  function compactSearchQuery(parts: string[]) {
+    const selected: Array<{ value: string; normalized: string; tokens: string[] }> = [];
+    for (const part of parts.map((value) => value.trim()).filter(Boolean)) {
+      const normalized = normalizeQueryPart(part);
+      const tokens = queryTokens(part);
+      if (!normalized) continue;
+      if (selected.some((item) => item.normalized === normalized || item.normalized.includes(normalized))) {
+        continue;
+      }
+      for (let index = selected.length - 1; index >= 0; index -= 1) {
+        if (normalized.includes(selected[index].normalized)) {
+          selected.splice(index, 1);
+        }
+      }
+      const prefixMatch = selected.find((item) => {
+        const prefixLength = sharedPrefixLength(item.tokens, tokens);
+        return prefixLength >= 3 && prefixLength < tokens.length && prefixLength < item.tokens.length;
+      });
+      if (prefixMatch) {
+        const suffix = part.split(/\s+/).slice(sharedPrefixLength(prefixMatch.tokens, tokens)).join(" ");
+        if (suffix) {
+          prefixMatch.value = `${prefixMatch.value} ${suffix}`;
+          prefixMatch.normalized = normalizeQueryPart(prefixMatch.value);
+          prefixMatch.tokens = queryTokens(prefixMatch.value);
+        }
+        continue;
+      }
+      selected.push({ value: part, normalized, tokens });
+    }
+    return selected.map((item) => item.value).join(" ");
+  }
+
   async function generateEvidenceLoopQueries(loopOptions: EvidenceLoopOptions = {}): Promise<EvidenceLoopQuery[]> {
     const beliefIds = new Set(loopOptions.beliefIds?.filter(Boolean));
     const beliefs = (await store.listBeliefs()).filter((belief) => {
@@ -924,10 +972,7 @@ export function createWorldModelServices(
     for (const belief of beliefs) {
       for (const hypothesis of belief.hypotheses) {
         if (hypothesis.status !== "ACTIVE") continue;
-        const query = [belief.title, hypothesis.proposition, hypothesis.notes]
-          .map((value) => value.trim())
-          .filter(Boolean)
-          .join(" ");
+        const query = compactSearchQuery([belief.title, hypothesis.proposition, hypothesis.notes]);
         const key = `${hypothesis.id}:${query}`;
         if (!query || seen.has(key)) continue;
         seen.add(key);
