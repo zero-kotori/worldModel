@@ -792,6 +792,16 @@ describe("world model services", () => {
     expect(loop.sourceRunCount).toBe(1);
     expect(loop.failureCount).toBe(0);
     expect(loop.candidateCount).toBe(1);
+    expect(loop.skippedSourceCount).toBe(1);
+    expect(loop.skippedSources).toEqual([
+      expect.objectContaining({
+        sourceId: flakySource.id,
+        sourceName: "Flaky source",
+        reason: "CONSECUTIVE_FAILURES",
+        consecutiveFailureCount: 3,
+        latestError: "Source endpoint unavailable"
+      })
+    ]);
     expect(loop.runs.every((run) => run.sourceId !== flakySource.id)).toBe(true);
 
     const explicitLoop = await services.automation.runEvidenceLoop({
@@ -804,6 +814,8 @@ describe("world model services", () => {
     expect(failingFetchCount).toBe(1);
     expect(explicitLoop.sourceRunCount).toBe(1);
     expect(explicitLoop.failureCount).toBe(1);
+    expect(explicitLoop.skippedSourceCount).toBe(0);
+    expect(explicitLoop.skippedSources).toEqual([]);
     expect(explicitLoop.runs[0]?.sourceId).toBe(flakySource.id);
   });
 

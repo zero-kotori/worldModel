@@ -15,6 +15,8 @@ function createAutomation(overrides: Partial<Automation> = {}): Automation {
       autoAppliedCount: 1,
       reviewCount: 0,
       failureCount: 0,
+      skippedSourceCount: 0,
+      skippedSources: [],
       queries: [],
       runs: []
     }),
@@ -191,6 +193,8 @@ describe("local evidence loop worker", () => {
           autoAppliedCount: 1,
           reviewCount: 0,
           failureCount: 0,
+          skippedSourceCount: 0,
+          skippedSources: [],
           queries: [],
           runs: []
         };

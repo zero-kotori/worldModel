@@ -28,6 +28,7 @@ import type {
   EvidenceHypothesisLinkRecord,
   EvidenceLoopOptions,
   EvidenceLoopQuery,
+  EvidenceLoopSkippedSource,
   EvidenceRecord,
   HypothesisRecommendation,
   HypothesisRecommendationOptions,
@@ -1158,19 +1159,20 @@ export function createWorldModelServices(
     }
   }
 
-  async function hasRecentSourceFailureStreak(sourceId: string) {
+  async function recentSourceFailureStreak(sourceId: string) {
     const runs = (await store.listObservationRuns())
       .filter((run) => run.sourceId === sourceId)
       .sort((left, right) => right.startedAt.getTime() - left.startedAt.getTime());
-    let failureCount = 0;
+    let consecutiveFailureCount = 0;
+    let latestError: string | undefined;
 
     for (const run of runs) {
       if (run.status !== "FAILED") break;
-      failureCount += 1;
-      if (failureCount >= SOURCE_FAILURE_SUPPRESSION_THRESHOLD) return true;
+      latestError ??= run.errorMessage;
+      consecutiveFailureCount += 1;
     }
 
-    return false;
+    return { consecutiveFailureCount, latestError };
   }
 
   async function runEvidenceLoop(loopOptions: EvidenceLoopOptions = {}) {
@@ -1184,10 +1186,20 @@ export function createWorldModelServices(
       return sourceIds.size === 0 || sourceIds.has(source.id);
     });
     let sources = eligibleSources;
+    const skippedSources: EvidenceLoopSkippedSource[] = [];
     if (sourceIds.size === 0) {
       const stableSources = [];
       for (const source of eligibleSources) {
-        if (!(await hasRecentSourceFailureStreak(source.id))) {
+        const failureStreak = await recentSourceFailureStreak(source.id);
+        if (failureStreak.consecutiveFailureCount >= SOURCE_FAILURE_SUPPRESSION_THRESHOLD) {
+          skippedSources.push({
+            sourceId: source.id,
+            sourceName: source.name,
+            reason: "CONSECUTIVE_FAILURES",
+            consecutiveFailureCount: failureStreak.consecutiveFailureCount,
+            latestError: failureStreak.latestError
+          });
+        } else {
           stableSources.push(source);
         }
       }
@@ -1212,6 +1224,8 @@ export function createWorldModelServices(
       mode: loopOptions.reviewOnly ? "review-only" as const : "auto-apply" as const,
       queryCount: queries.length,
       sourceRunCount: runs.length,
+      skippedSourceCount: skippedSources.length,
+      skippedSources,
       itemCount: runs.reduce((sum, run) => sum + run.itemCount, 0),
       deduplicatedCount: runs.reduce((sum, run) => sum + run.deduplicatedCount, 0),
       candidateCount: runs.reduce((sum, run) => sum + run.candidateCount, 0),

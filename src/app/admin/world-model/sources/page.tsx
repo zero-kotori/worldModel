@@ -71,6 +71,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const activeBeliefs = data.beliefs.filter((belief) => belief.status === "ACTIVE");
   const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, {
     workerRuntime: data.workerRuntime,
+    sources: automationSources,
     sourceCount: automationSources.length,
     enabledSourceCount: automationSources.filter((source) => source.enabled).length,
     activeBeliefCount: activeBeliefs.length,

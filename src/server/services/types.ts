@@ -208,10 +208,20 @@ export type EvidenceLoopOptions = {
   forceAutoApply?: boolean;
 };
 
+export type EvidenceLoopSkippedSource = {
+  sourceId: string;
+  sourceName: string;
+  reason: "CONSECUTIVE_FAILURES";
+  consecutiveFailureCount: number;
+  latestError?: string;
+};
+
 export type EvidenceLoopResult = {
   mode: "auto-apply" | "review-only";
   queryCount: number;
   sourceRunCount: number;
+  skippedSourceCount: number;
+  skippedSources: EvidenceLoopSkippedSource[];
   itemCount: number;
   deduplicatedCount: number;
   candidateCount: number;

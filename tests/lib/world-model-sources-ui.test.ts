@@ -216,6 +216,56 @@ describe("world model sources UI", () => {
     });
   });
 
+  it("diagnoses sources that automatic evidence loops will skip after repeated failures", () => {
+    const health = summarizeAutomationHealth(
+      [
+        run({
+          id: "failed-1",
+          sourceId: "flaky-source",
+          status: "FAILED",
+          startedAt: new Date("2026-06-11T01:00:00.000Z"),
+          errorMessage: "Source endpoint unavailable"
+        }),
+        run({
+          id: "failed-2",
+          sourceId: "flaky-source",
+          status: "FAILED",
+          startedAt: new Date("2026-06-11T02:00:00.000Z"),
+          errorMessage: "Source endpoint unavailable"
+        }),
+        run({
+          id: "failed-3",
+          sourceId: "flaky-source",
+          status: "FAILED",
+          startedAt: new Date("2026-06-11T03:00:00.000Z"),
+          errorMessage: "Source endpoint unavailable"
+        })
+      ],
+      [],
+      {
+        sources: [{ ...source("flaky-source"), name: "Flaky source" }],
+        sourceCount: 1,
+        enabledSourceCount: 1,
+        activeBeliefCount: 1,
+        activeHypothesisCount: 1
+      }
+    );
+
+    expect(health.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warning",
+          title: "来源已自动降噪",
+          detail: expect.stringContaining("Flaky source")
+        })
+      ])
+    );
+    expect(health.nextActions).toContainEqual({
+      label: "检查来源配置",
+      href: "/admin/world-model/sources#source-list"
+    });
+  });
+
   it("summarizes the latest automation worker heartbeat separately from run history", () => {
     const latestHeartbeat = heartbeat({
       id: "default",

@@ -1,6 +1,8 @@
 import type { AutomationHeartbeatRecord, ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
 
 type AutomationHealthTone = "idle" | "healthy" | "warning" | "failing";
+const SOURCE_FAILURE_SUPPRESSION_THRESHOLD = 3;
+
 type AutomationDiagnostic = {
   level: "info" | "warning" | "error";
   title: string;
@@ -25,6 +27,7 @@ type AutomationHealthOptions =
       enabledSourceCount?: number;
       activeBeliefCount?: number;
       activeHypothesisCount?: number;
+      sources?: ObservationSourceRecord[];
     };
 type AutomationWorkerSummary = {
   id?: string;
@@ -36,6 +39,10 @@ type AutomationWorkerSummary = {
   intervalMs?: number;
   consecutiveFailureCount: number;
   lastError: string;
+};
+type SuppressedAutomationSource = {
+  source: ObservationSourceRecord;
+  consecutiveFailureCount: number;
 };
 
 export function getLatestSourceRun(sourceId: string, runs: ObservationRunRecord[]) {
@@ -73,6 +80,25 @@ export function runQuerySummary(run?: ObservationRunRecord) {
 
 function sortedRuns(runs: ObservationRunRecord[]) {
   return [...runs].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+}
+
+function sourceConsecutiveFailureCount(sourceId: string, runs: ObservationRunRecord[]) {
+  let failureCount = 0;
+  for (const run of sortedRuns(runs).filter((item) => item.sourceId === sourceId)) {
+    if (run.status !== "FAILED") break;
+    failureCount += 1;
+  }
+  return failureCount;
+}
+
+function suppressedAutomationSources(sources: ObservationSourceRecord[], runs: ObservationRunRecord[]): SuppressedAutomationSource[] {
+  return sources
+    .filter((source) => source.enabled && source.kind !== "MANUAL")
+    .map((source) => ({
+      source,
+      consecutiveFailureCount: sourceConsecutiveFailureCount(source.id, runs)
+    }))
+    .filter((item) => item.consecutiveFailureCount >= SOURCE_FAILURE_SUPPRESSION_THRESHOLD);
 }
 
 function successfulRun(run: ObservationRunRecord) {
@@ -190,7 +216,8 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
       sourceCount: undefined,
       enabledSourceCount: undefined,
       activeBeliefCount: undefined,
-      activeHypothesisCount: undefined
+      activeHypothesisCount: undefined,
+      sources: []
     };
   }
   return {
@@ -199,7 +226,8 @@ function normalizeHealthOptions(options: AutomationHealthOptions | undefined) {
     sourceCount: options?.sourceCount,
     enabledSourceCount: options?.enabledSourceCount,
     activeBeliefCount: options?.activeBeliefCount,
-    activeHypothesisCount: options?.activeHypothesisCount
+    activeHypothesisCount: options?.activeHypothesisCount,
+    sources: options?.sources ?? []
   };
 }
 
@@ -214,6 +242,7 @@ function automationDiagnostics(input: {
   activeHypothesisCount?: number;
   latestRun?: ObservationRunRecord;
   latestFailedRun?: ObservationRunRecord;
+  suppressedSources: SuppressedAutomationSource[];
   worker: AutomationWorkerSummary;
 }): AutomationDiagnostic[] {
   const diagnostics: AutomationDiagnostic[] = [];
@@ -243,6 +272,19 @@ function automationDiagnostics(input: {
       level: "warning",
       title: "缺少活跃假设",
       detail: "为活跃信念表添加假设后，闭环才能评估证据并更新概率。"
+    });
+  }
+
+  if (input.suppressedSources.length > 0) {
+    const names = input.suppressedSources
+      .slice(0, 3)
+      .map((item) => item.source.name)
+      .join("、");
+    const remaining = input.suppressedSources.length > 3 ? ` 等 ${input.suppressedSources.length} 个来源` : "";
+    diagnostics.push({
+      level: "warning",
+      title: "来源已自动降噪",
+      detail: `${names}${remaining} 已连续失败至少 ${SOURCE_FAILURE_SUPPRESSION_THRESHOLD} 次，自动闭环会暂时跳过；手动运行来源可验证恢复。`
     });
   }
 
@@ -340,6 +382,12 @@ function automationNextActions(diagnostics: AutomationDiagnostic[]): AutomationN
         href: "/admin/world-model/sources#source-list"
       });
     }
+    if (diagnostic.title === "来源已自动降噪") {
+      addNextAction(actions, {
+        label: "检查来源配置",
+        href: "/admin/world-model/sources#source-list"
+      });
+    }
     if (diagnostic.title === "候选等待确认") {
       addNextAction(actions, {
         label: "处理待审候选",
@@ -384,12 +432,13 @@ export function summarizeAutomationHealth(
   diagnostics: AutomationDiagnostic[];
   nextActions: AutomationNextAction[];
 } {
-  const { referenceTime, workerRuntime, sourceCount, enabledSourceCount, activeBeliefCount, activeHypothesisCount } =
+  const { referenceTime, workerRuntime, sourceCount, enabledSourceCount, activeBeliefCount, activeHypothesisCount, sources } =
     normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
   const latestRun = orderedRuns[0];
   const worker = summarizeWorker(heartbeats, referenceTime, workerRuntime);
   const latestFailedRun = orderedRuns.find((run) => run.status === "FAILED");
+  const suppressedSources = suppressedAutomationSources(sources, orderedRuns);
   const diagnostics = automationDiagnostics({
     sourceCount,
     enabledSourceCount,
@@ -397,6 +446,7 @@ export function summarizeAutomationHealth(
     activeHypothesisCount,
     latestRun,
     latestFailedRun,
+    suppressedSources,
     worker
   });
   const nextActions = automationNextActions(diagnostics);
