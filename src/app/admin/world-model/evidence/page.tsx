@@ -10,6 +10,7 @@ import {
 } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
+import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import { evidenceDirectionLabels, hypothesisStanceLabels } from "@/lib/world-model-navigation";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
@@ -73,6 +74,7 @@ export default async function EvidencePage({ searchParams }: PageProps) {
   const selectedObservation = pendingObservations.find(
     (observation) => observation.id === selectedObservationParam || readableCode(observationCodes, observation.id, "O") === selectedObservationParam
   );
+  const selectedRecommendedLinks = selectedObservation ? getObservationRecommendedLinks(selectedObservation) : [];
   const evidenceCodes = createReadableCodes(data.evidence, "E", (evidence) => evidence.confirmedAt);
   const updateCodes = createReadableCodes(data.updates, "U", (event) => event.createdAt);
   const hypothesisCodes = createReadableCodes(
@@ -98,6 +100,73 @@ export default async function EvidencePage({ searchParams }: PageProps) {
       <DataWarning message={data.error} />
       <StatusNotice message={firstParam(params.message)} />
       <StatusNotice message={firstParam(params.error)} tone="error" />
+      {selectedObservation && selectedRecommendedLinks.length > 0 ? (
+        <PageSection title="推荐候选确认">
+          <form action={confirmEvidenceAction} className="grid gap-3 rounded-md border border-line bg-white p-4">
+            <input type="hidden" name="observationId" value={selectedObservation.id} />
+            <div>
+              <div className="text-sm font-semibold text-ink">{selectedObservation.title}</div>
+              <div className="mt-1 font-mono text-xs text-ink/55">
+                {readableCode(observationCodes, selectedObservation.id, "O")} · 可信度 {selectedObservation.credibility.toFixed(2)}
+              </div>
+            </div>
+            <div className="grid gap-3">
+              {selectedRecommendedLinks.map((link) => {
+                const target = hypothesisById.get(link.hypothesisId);
+                return (
+                  <div key={link.hypothesisId} className="grid gap-2 border-t border-line py-3 lg:grid-cols-5">
+                    <label className="flex items-start gap-2 text-sm text-ink/75 lg:col-span-2">
+                      <input name="linkHypothesisIds" value={link.hypothesisId} type="checkbox" defaultChecked className="mt-1" />
+                      <span>
+                        <span className="font-mono text-xs">{readableCode(hypothesisCodes, link.hypothesisId, "H")}</span>
+                        <span className="ml-2">
+                          {target ? `${target.belief.title} · ${target.hypothesis.proposition}` : "已删除假设"}
+                        </span>
+                      </span>
+                    </label>
+                    <SelectField
+                      label="方向"
+                      name={`direction:${link.hypothesisId}`}
+                      defaultValue={link.direction}
+                      options={Object.entries(evidenceDirectionLabels).map(([value, label]) => ({ value, label }))}
+                    />
+                    <Field
+                      label="相关性"
+                      name={`relevance:${link.hypothesisId}`}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      defaultValue={link.relevance}
+                    />
+                    <Field
+                      label="似然比"
+                      name={`likelihoodRatio:${link.hypothesisId}`}
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      defaultValue={link.likelihoodRatio}
+                    />
+                    <Field
+                      label="置信度"
+                      name={`confidence:${link.hypothesisId}`}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="1"
+                      defaultValue={link.confidence}
+                    />
+                    <TextAreaField label="解释" name={`rationale:${link.hypothesisId}`} defaultValue={link.rationale} />
+                  </div>
+                );
+              })}
+            </div>
+            <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white">
+              <Check size={16} /> 确认并更新
+            </button>
+          </form>
+        </PageSection>
+      ) : null}
       <div id="confirm-observation">
       <PageSection title="从观察确认为证据">
         <form action={confirmEvidenceAction} className="grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-4">

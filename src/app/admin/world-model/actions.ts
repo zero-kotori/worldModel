@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ZodError } from "zod";
 import { getWorldModelServices } from "@/server/services";
+import { readEvidenceLinksFromFormData } from "@/lib/world-model-evidence-ui";
 import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import type { BeliefCategory, HypothesisStance, ObservationSourceKind } from "@/server/services/types";
 
@@ -52,13 +53,6 @@ async function runAction(path: string, success: string, action: () => Promise<vo
     redirectWithNotice(path, { error: actionErrorMessage(error) });
   }
   redirectWithNotice(path, { message: success });
-}
-
-function linkLikelihoodRatio(formData: FormData) {
-  const direction = text(formData, "direction");
-  const fallback = direction === "OPPOSES" ? 0.67 : 1.5;
-  const raw = number(formData, "likelihoodRatio", fallback);
-  return direction === "OPPOSES" && raw > 1 ? 1 / raw : raw;
 }
 
 function revalidateWorldModel() {
@@ -190,18 +184,10 @@ export async function confirmRecommendedEvidenceAction(formData: FormData) {
 export async function confirmEvidenceAction(formData: FormData) {
   await runAction("/admin/world-model/evidence", "证据已确认并应用更新", async () => {
     const services = getWorldModelServices();
-    const hypothesisIds = values(formData, "hypothesisIds");
     await services.evidence.confirmAndApplyObservation({
       observationId: text(formData, "observationId"),
       confirmationMode: "MANUAL",
-      links: hypothesisIds.map((hypothesisId) => ({
-        hypothesisId,
-        direction: text(formData, "direction") as "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL",
-        relevance: number(formData, "relevance", 0.7),
-        likelihoodRatio: linkLikelihoodRatio(formData),
-        confidence: number(formData, "confidence", 0.6),
-        rationale: text(formData, "rationale")
-      }))
+      links: readEvidenceLinksFromFormData(formData)
     });
   });
 }
@@ -216,18 +202,10 @@ export async function createEvidenceFromObservationAction(formData: FormData) {
       author: text(formData, "author") || undefined,
       credibility: number(formData, "credibility", 0.5)
     });
-    const hypothesisIds = values(formData, "hypothesisIds");
     await services.evidence.confirmAndApplyObservation({
       observationId: observation.id,
       confirmationMode: "MANUAL",
-      links: hypothesisIds.map((hypothesisId) => ({
-        hypothesisId,
-        direction: text(formData, "direction") as "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL",
-        relevance: number(formData, "relevance", 0.7),
-        likelihoodRatio: linkLikelihoodRatio(formData),
-        confidence: number(formData, "confidence", 0.6),
-        rationale: text(formData, "rationale")
-      }))
+      links: readEvidenceLinksFromFormData(formData)
     });
   });
 }
