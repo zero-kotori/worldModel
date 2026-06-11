@@ -348,7 +348,8 @@ export async function runEvidenceLoopAction(formData: FormData) {
     await services.automation.runEvidenceLoop({
       reviewOnly: bool(formData, "reviewOnly"),
       maxObservations: number(formData, "maxObservations") || undefined,
-      autoConfirmThreshold: number(formData, "autoConfirmThreshold") || undefined
+      autoConfirmThreshold: number(formData, "autoConfirmThreshold") || undefined,
+      bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources")
     });
   });
 }

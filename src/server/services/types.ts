@@ -172,6 +172,7 @@ export type EvidenceLoopOptions = {
   sourceIds?: string[];
   autoConfirmThreshold?: number;
   maxObservations?: number;
+  bootstrapDefaultSources?: boolean;
 };
 
 export type EvidenceLoopResult = {

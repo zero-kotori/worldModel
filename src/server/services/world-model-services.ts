@@ -11,7 +11,7 @@ import {
 } from "@/domain/updates";
 import { normalizeMutuallyExclusive } from "@/domain/bayes";
 import type { EstimatorOutput } from "@/domain/likelihood";
-import { getSourcePreset, listSourcePresets } from "@/lib/world-model-source-presets";
+import { getSourcePreset, listSourcePresets, sourcePresetDefinitions } from "@/lib/world-model-source-presets";
 import type { LikelihoodEstimator } from "@/server/models/estimators";
 import { createRecordId } from "@/server/services/in-memory-store";
 import { createSourceAdapter, type AdapterDependencies } from "@/server/sources/adapters";
@@ -889,6 +889,36 @@ export function createWorldModelServices(
     }
   }
 
+  async function createSourcePresetRecord(id: string) {
+    const preset = getSourcePreset(id);
+    if (!preset) throw new Error(`Source preset not found: ${id}`);
+    const existing = (await store.listSources()).find((source) => source.url === preset.url || source.name === preset.name);
+    if (existing) return existing;
+    const createdAt = now();
+    return store.createSource({
+      id: createRecordId("source"),
+      name: preset.name,
+      kind: preset.kind,
+      url: preset.url,
+      adapter: preset.adapter,
+      credentialRef: preset.credentialRef,
+      credibility: preset.credibility,
+      enabled: preset.enabled,
+      autoConfirm: preset.autoConfirm,
+      autoConfirmThreshold: preset.autoConfirmThreshold,
+      createdAt,
+      updatedAt: createdAt
+    });
+  }
+
+  async function bootstrapDefaultSources() {
+    const created = [];
+    for (const preset of sourcePresetDefinitions) {
+      created.push(await createSourcePresetRecord(preset.id));
+    }
+    return created;
+  }
+
   async function runSource(sourceId: string, runOptions: RunSourceOptions = {}) {
     const source = await store.getSource(sourceId);
     if (!source) throw new Error(`Source not found: ${sourceId}`);
@@ -996,6 +1026,9 @@ export function createWorldModelServices(
   async function runEvidenceLoop(loopOptions: EvidenceLoopOptions = {}) {
     const queries = await generateEvidenceLoopQueries(loopOptions);
     const sourceIds = new Set(loopOptions.sourceIds?.filter(Boolean));
+    if (loopOptions.bootstrapDefaultSources && sourceIds.size === 0) {
+      await bootstrapDefaultSources();
+    }
     const sources = (await store.listSources()).filter((source) => {
       if (!source.enabled || source.kind === "MANUAL") return false;
       return sourceIds.size === 0 || sourceIds.has(source.id);
@@ -1157,25 +1190,7 @@ export function createWorldModelServices(
         return listSourcePresets(await store.listSources());
       },
       async createPreset(id: string) {
-        const preset = getSourcePreset(id);
-        if (!preset) throw new Error(`Source preset not found: ${id}`);
-        const existing = (await store.listSources()).find((source) => source.url === preset.url || source.name === preset.name);
-        if (existing) return existing;
-        const createdAt = now();
-        return store.createSource({
-          id: createRecordId("source"),
-          name: preset.name,
-          kind: preset.kind,
-          url: preset.url,
-          adapter: preset.adapter,
-          credentialRef: preset.credentialRef,
-          credibility: preset.credibility,
-          enabled: preset.enabled,
-          autoConfirm: preset.autoConfirm,
-          autoConfirmThreshold: preset.autoConfirmThreshold,
-          createdAt,
-          updatedAt: createdAt
-        });
+        return createSourcePresetRecord(id);
       },
       async createSource(input: CreateSourceInput) {
         const parsed = sourceSchema.parse(input);

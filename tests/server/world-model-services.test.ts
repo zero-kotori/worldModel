@@ -1,6 +1,7 @@
 import { createInMemoryWorldModelStore } from "@/server/services/in-memory-store";
 import { createWorldModelServices } from "@/server/services/world-model-services";
 import { createWorldModelGraph } from "@/lib/world-model-graph";
+import { sourcePresetDefinitions } from "@/lib/world-model-source-presets";
 
 describe("world model services", () => {
   it("creates a belief with normalized mutually exclusive hypotheses", async () => {
@@ -1165,6 +1166,62 @@ describe("world model services", () => {
     expect(artifact.enabled).toBe(true);
     await expect(services.sources.listSources()).resolves.toHaveLength(1);
     await expect(services.models.listArtifacts()).resolves.toHaveLength(1);
+  });
+
+  it("bootstraps default source presets before running an evidence loop when requested", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          [
+            "<rss><channel>",
+            "<item>",
+            "<title>AI agents accelerate engineering teams</title>",
+            "<description>AI agents accelerate engineering teams in repeated production workflows.</description>",
+            "<link>https://example.com/agent-evidence</link>",
+            "</item>",
+            "</channel></rss>"
+          ].join("")
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+
+    const loop = await services.automation.runEvidenceLoop({
+      reviewOnly: true,
+      maxObservations: 1,
+      autoConfirmThreshold: 0.2,
+      bootstrapDefaultSources: true
+    });
+    const sources = await services.sources.listSources();
+    const evidence = await services.evidence.listEvidence();
+    const updatedBelief = await services.beliefs.getBelief(belief.id);
+
+    expect(sources).toHaveLength(sourcePresetDefinitions.length);
+    expect(sources.map((source) => source.name)).toEqual(expect.arrayContaining(sourcePresetDefinitions.map((preset) => preset.name)));
+    expect(loop).toMatchObject({
+      queryCount: 1,
+      sourceRunCount: sourcePresetDefinitions.length,
+      itemCount: sourcePresetDefinitions.length,
+      candidateCount: 1,
+      autoAppliedCount: 0,
+      reviewCount: 1,
+      failureCount: 0
+    });
+    expect(loop.deduplicatedCount).toBe(sourcePresetDefinitions.length - 1);
+    expect(evidence).toHaveLength(0);
+    expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
   it("lists and creates default public source presets without duplicates", async () => {
