@@ -26,6 +26,8 @@ import type {
   EvidenceLoopOptions,
   EvidenceLoopQuery,
   EvidenceRecord,
+  HypothesisRecommendation,
+  HypothesisRecommendationOptions,
   HypothesisRecord,
   ImportArtifactInput,
   ObservationRunRecord,
@@ -33,6 +35,7 @@ import type {
   RunSourceOptions,
   RunLikelihoodInput,
   ConnectEvidenceHypothesisInput,
+  BeliefRecord,
   UpdateBeliefInput,
   UpdateEvidenceInput,
   UpdateHypothesisInput,
@@ -294,6 +297,144 @@ function overlapScore(source: string, target: string) {
     if (sourceTokens.has(token)) overlap += 1;
   }
   return overlap / targetTokens.size;
+}
+
+function normalizedTextKey(value: string) {
+  return value.toLowerCase().replaceAll(/[^a-z0-9\u4e00-\u9fa5]+/g, "");
+}
+
+function categoryRecommendationTemplates(category: CreateBeliefInput["category"]) {
+  const shared = [
+    {
+      stance: "SUPPORTS" as const,
+      priorProbability: 0.45,
+      proposition: (title: string) => `${title} 在未来 6-12 个月出现可重复的正向证据`,
+      rationale: "建立一个短周期正向检验点，避免只停留在长期直觉。",
+      notes: "可观察：至少 3 个可信来源给出方向一致的进展、采用或结果数据。"
+    },
+    {
+      stance: "OPPOSES" as const,
+      priorProbability: 0.35,
+      proposition: (title: string) => `${title} 的关键反例在未来 6-12 个月持续出现`,
+      rationale: "保留反证假设，避免只收集支持性证据。",
+      notes: "可观察：高可信来源持续出现失败案例、负面结果、停滞指标或替代解释。"
+    }
+  ];
+
+  const specific: Record<CreateBeliefInput["category"], typeof shared> = {
+    AI_TREND: [
+      {
+        stance: "SUPPORTS",
+        priorProbability: 0.5,
+        proposition: (title) => `${title} 带来真实工作流中的效率或质量提升`,
+        rationale: "AI 趋势需要落到真实任务结果，而不是只看发布热度。",
+        notes: "可观察：企业案例、基准复现、用户留存或交付周期数据显示持续改善。"
+      },
+      {
+        stance: "OPPOSES",
+        priorProbability: 0.35,
+        proposition: (title) => `${title} 被评审成本、可靠性或集成复杂度抵消`,
+        rationale: "反向检验采用阻力，防止高估演示效果。",
+        notes: "可观察：失败复盘、成本上升、人工返工、可靠性事故或弃用信号。"
+      }
+    ],
+    INVESTMENT: [
+      {
+        stance: "SUPPORTS",
+        priorProbability: 0.45,
+        proposition: (title) => `${title} 的基本面或资金面指标持续改善`,
+        rationale: "投资判断需要拆成可跟踪的驱动因素。",
+        notes: "可观察：财报、订单、现金流、估值、资金流或行业数据连续改善。"
+      },
+      {
+        stance: "OPPOSES",
+        priorProbability: 0.4,
+        proposition: (title) => `${title} 的核心驱动被估值、周期或竞争压力削弱`,
+        rationale: "明确反向风险，避免单边叙事。",
+        notes: "可观察：利润率恶化、估值压缩、监管变化、竞争加剧或需求下滑。"
+      }
+    ],
+    TECH_TREND: [
+      {
+        stance: "SUPPORTS",
+        priorProbability: 0.45,
+        proposition: (title) => `${title} 获得开发者、企业或生态的持续采用`,
+        rationale: "技术趋势要看采用和生态，而不只是概念热度。",
+        notes: "可观察：GitHub、下载量、客户案例、标准化进展或生态工具增长。"
+      },
+      {
+        stance: "OPPOSES",
+        priorProbability: 0.35,
+        proposition: (title) => `${title} 因迁移成本、性能或生态缺口停留在小众场景`,
+        rationale: "技术采用常被切换成本和生态约束限制。",
+        notes: "可观察：迁移失败、性能瓶颈、维护停滞、社区活跃下降或替代方案胜出。"
+      }
+    ],
+    CAREER: [
+      {
+        stance: "SUPPORTS",
+        priorProbability: 0.45,
+        proposition: (title) => `${title} 提升长期能力、机会质量或选择权`,
+        rationale: "职业判断要拆成能力、机会和选择权三个可追踪维度。",
+        notes: "可观察：岗位要求、薪酬区间、项目产出、人脉质量或学习曲线改善。"
+      },
+      {
+        stance: "OPPOSES",
+        priorProbability: 0.35,
+        proposition: (title) => `${title} 的机会成本高于实际收益`,
+        rationale: "保留机会成本假设，避免只看路径收益。",
+        notes: "可观察：收入差距、时间投入、压力水平、技能折旧或替代路径表现更好。"
+      }
+    ],
+    SOURCE_RELIABILITY: [
+      {
+        stance: "SUPPORTS",
+        priorProbability: 0.55,
+        proposition: (title) => `${title} 在关键事实上持续被后续证据验证`,
+        rationale: "来源可靠性应由历史命中率和修正透明度检验。",
+        notes: "可观察：原始证据、后续验证、勘误记录、引用链和过往预测准确率。"
+      },
+      {
+        stance: "OPPOSES",
+        priorProbability: 0.35,
+        proposition: (title) => `${title} 存在选择性报道、误导性归因或低质量引用`,
+        rationale: "可靠性判断必须持续寻找系统性偏差。",
+        notes: "可观察：断章取义、缺少一手来源、反复误报、利益冲突或回避更正。"
+      }
+    ]
+  };
+
+  return [...specific[category], ...shared];
+}
+
+function createHypothesisRecommendations(
+  belief: BeliefRecord,
+  options: HypothesisRecommendationOptions = {}
+): HypothesisRecommendation[] {
+  const limit = Math.max(1, Math.min(8, options.limit ?? 4));
+  const existing = new Set(belief.hypotheses.map((hypothesis) => normalizedTextKey(hypothesis.proposition)));
+  const seen = new Set(existing);
+  const title = belief.title.trim();
+  const context = [belief.title, belief.description].filter(Boolean).join(" ");
+  const recommendations: HypothesisRecommendation[] = [];
+
+  for (const template of categoryRecommendationTemplates(belief.category)) {
+    const proposition = template.proposition(title).trim();
+    const key = normalizedTextKey(proposition);
+    if (!proposition || seen.has(key)) continue;
+    seen.add(key);
+    recommendations.push({
+      proposition,
+      stance: template.stance,
+      priorProbability: template.priorProbability,
+      notes: template.notes,
+      evidenceSearchQuery: `${context} ${proposition}`.trim(),
+      rationale: template.rationale
+    });
+    if (recommendations.length >= limit) break;
+  }
+
+  return recommendations;
 }
 
 function isUsableEstimatorOutput(output: EstimatorOutput) {
@@ -946,6 +1087,11 @@ export function createWorldModelServices(
         return hypothesis;
       },
       updateHypothesis: updateHypothesisRecord,
+      async recommendHypotheses(beliefId: string, recommendationOptions: HypothesisRecommendationOptions = {}) {
+        const belief = await store.getBelief(beliefId);
+        if (!belief) throw new Error(`Belief not found: ${beliefId}`);
+        return createHypothesisRecommendations(belief, recommendationOptions);
+      },
       listBeliefs() {
         return store.listBeliefs();
       },

@@ -1,6 +1,7 @@
 import { Plus } from "lucide-react";
-import { createBeliefAction, createHypothesisAction } from "@/app/admin/world-model/actions";
+import { createBeliefAction, createHypothesisAction, createRecommendedHypothesisAction } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
+import { getWorldModelServices } from "@/server/services";
 import { categoryLabels, hypothesisStanceLabels, probabilityModeLabels } from "@/lib/world-model-navigation";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { createWorldModelGraph } from "@/lib/world-model-graph";
@@ -51,6 +52,12 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
   const graphUpdates = data.updates.filter((event) => graphBeliefIds.has(event.beliefId) && graphEvidenceIds.has(event.evidenceId));
   const graph = createWorldModelGraph({ beliefs: graphBeliefs, evidence: graphEvidence, updates: graphUpdates });
   const graphEditor = createWorldModelGraphEditorData({ beliefs: data.beliefs, evidence: data.evidence, updates: data.updates });
+  const services = getWorldModelServices();
+  const recommendationsByBeliefId = new Map(
+    await Promise.all(
+      data.beliefs.map(async (belief) => [belief.id, await services.beliefs.recommendHypotheses(belief.id, { limit: 4 })] as const)
+    )
+  );
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -110,6 +117,43 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="mt-4 grid gap-2 border-t border-line pt-4">
+                    <div className="text-xs font-medium text-ink/65">推荐假设</div>
+                    {(recommendationsByBeliefId.get(belief.id) ?? []).length === 0 ? (
+                      <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">暂无推荐</div>
+                    ) : (
+                      <div className="grid gap-2">
+                        {(recommendationsByBeliefId.get(belief.id) ?? []).map((recommendation) => (
+                          <div key={recommendation.proposition} className="rounded-md border border-line bg-panel p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-ink">{recommendation.proposition}</div>
+                                <div className="mt-1 text-xs text-ink/60">
+                                  {hypothesisStanceLabels[recommendation.stance]} · 初始概率{" "}
+                                  {(recommendation.priorProbability * 100).toFixed(1)}%
+                                </div>
+                                <div className="mt-1 text-xs text-ink/55">{recommendation.notes}</div>
+                              </div>
+                              <form action={createRecommendedHypothesisAction}>
+                                <input type="hidden" name="beliefId" value={belief.id} />
+                                <input type="hidden" name="proposition" value={recommendation.proposition} />
+                                <input type="hidden" name="stance" value={recommendation.stance} />
+                                <input type="hidden" name="priorProbability" value={recommendation.priorProbability} />
+                                <input
+                                  type="hidden"
+                                  name="notes"
+                                  value={`${recommendation.notes}\n推荐依据：${recommendation.rationale}\n证据检索：${recommendation.evidenceSearchQuery}`}
+                                />
+                                <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-line bg-white px-2 text-xs font-semibold text-ink hover:border-moss hover:text-moss">
+                                  <Plus size={14} /> 添加
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <form action={createHypothesisAction} className="mt-4 grid gap-3 border-t border-line pt-4 lg:grid-cols-4">
                     <input type="hidden" name="beliefId" value={belief.id} />

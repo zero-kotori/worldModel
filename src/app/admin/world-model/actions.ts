@@ -109,6 +109,18 @@ export async function createHypothesisAction(formData: FormData) {
   });
 }
 
+export async function createRecommendedHypothesisAction(formData: FormData) {
+  await runAction("/admin/world-model/beliefs", "推荐假设已添加", async () => {
+    const services = getWorldModelServices();
+    await services.beliefs.createHypothesis(text(formData, "beliefId"), {
+      proposition: text(formData, "proposition"),
+      priorProbability: number(formData, "priorProbability", 0.5),
+      stance: text(formData, "stance") as HypothesisStance,
+      notes: text(formData, "notes")
+    });
+  });
+}
+
 export async function updateBeliefAction(formData: FormData) {
   await runAction("/admin/world-model/beliefs", "信念表已更新", async () => {
     const services = getWorldModelServices();

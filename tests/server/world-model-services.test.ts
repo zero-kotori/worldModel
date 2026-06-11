@@ -156,6 +156,36 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[1].currentProbability).toBeCloseTo(0.25, 8);
   });
 
+  it("recommends measurable support and counter hypotheses for a belief", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+    const belief = await services.beliefs.createBelief({
+      title: "AI agents improve software delivery",
+      category: "AI_TREND",
+      description: "Track whether agentic coding systems materially change engineering throughput and review quality.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents improve software delivery through faster implementation cycles",
+          priorProbability: 0.45,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+
+    const recommendations = await services.beliefs.recommendHypotheses(belief.id, { limit: 4 });
+
+    expect(recommendations).toHaveLength(4);
+    expect(recommendations.map((item) => item.proposition)).not.toContain(belief.hypotheses[0].proposition);
+    expect(recommendations.map((item) => item.stance)).toEqual(expect.arrayContaining(["SUPPORTS", "OPPOSES"]));
+    expect(recommendations[0]).toMatchObject({
+      priorProbability: expect.any(Number),
+      notes: expect.stringContaining("可观察"),
+      evidenceSearchQuery: expect.stringContaining("AI agents improve software delivery")
+    });
+    expect(recommendations.every((item) => item.priorProbability > 0 && item.priorProbability < 1)).toBe(true);
+  });
+
   it("edits beliefs and moves hypotheses between belief groups", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const sourceBelief = await services.beliefs.createBelief({

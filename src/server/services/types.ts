@@ -209,6 +209,15 @@ export type CreateHypothesisInput = {
   expiryCondition?: string;
 };
 
+export type HypothesisRecommendation = Required<Pick<CreateHypothesisInput, "proposition" | "priorProbability" | "stance" | "notes">> & {
+  evidenceSearchQuery: string;
+  rationale: string;
+};
+
+export type HypothesisRecommendationOptions = {
+  limit?: number;
+};
+
 export type CreateBeliefInput = {
   title: string;
   category: BeliefCategory;
@@ -342,6 +351,7 @@ export type WorldModelServices = {
     updateBelief(id: string, input: UpdateBeliefInput): Promise<BeliefRecord>;
     createHypothesis(beliefId: string, input: CreateHypothesisInput): Promise<HypothesisRecord>;
     updateHypothesis(id: string, input: UpdateHypothesisInput): Promise<HypothesisRecord>;
+    recommendHypotheses(id: string, options?: HypothesisRecommendationOptions): Promise<HypothesisRecommendation[]>;
     listBeliefs(): Promise<BeliefRecord[]>;
     getBelief(id: string): Promise<BeliefRecord | null>;
   };
