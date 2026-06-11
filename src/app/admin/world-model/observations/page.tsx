@@ -149,6 +149,54 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
           </div>
         )}
       </PageSection>
+      <PageSection title="待处理观察">
+        {groupedObservations.activePool.length === 0 ? (
+          <EmptyState label="暂无待处理观察" />
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-line bg-white">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-panel text-xs text-ink/55">
+                <tr>
+                  <th className="px-3 py-2">编号</th>
+                  <th className="px-3 py-2">标题</th>
+                  <th className="px-3 py-2">可信度</th>
+                  <th className="px-3 py-2">时间</th>
+                  <th className="px-3 py-2">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedObservations.activePool.map((observation) => {
+                  const code = readableCode(observationCodes, observation.id, "O");
+                  return (
+                    <tr key={observation.id} className="border-t border-line">
+                      <td className="px-3 py-2 font-mono text-xs">{code}</td>
+                      <td className="px-3 py-2">{observation.title}</td>
+                      <td className="px-3 py-2">{observation.credibility.toFixed(2)}</td>
+                      <td className="px-3 py-2">{observation.observedAt.toLocaleString("zh-CN")}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                            href={`/admin/world-model/evidence?observation=${encodeURIComponent(code)}#confirm-observation`}
+                            className="inline-flex min-h-8 items-center gap-2 rounded-md border border-line px-2 text-xs font-semibold text-ink hover:border-moss hover:text-moss"
+                          >
+                            <Check size={14} /> 转为证据
+                          </Link>
+                          <form action={rejectObservationAction}>
+                            <input type="hidden" name="observationId" value={observation.id} />
+                            <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
+                              <Trash2 size={14} /> 拒绝
+                            </button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </PageSection>
       <PageSection title="未知证据队列">
         {groupedObservations.unknown.length === 0 ? (
           <EmptyState label="暂无未知证据" />

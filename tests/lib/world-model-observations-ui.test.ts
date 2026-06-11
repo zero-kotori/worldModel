@@ -122,4 +122,22 @@ describe("world model observations UI", () => {
     expect(observationReviewPriorityLabel(observationReviewPriority(highImpact))).toBe("高优先级");
     expect(observationReviewPriorityLabel(observationReviewPriority(lowImpact))).toBe("低优先级");
   });
+
+  it("orders pending observations without recommendations by credibility and recency", () => {
+    const olderLowCredibility = observation("older-low", "PENDING");
+    olderLowCredibility.credibility = 0.4;
+    olderLowCredibility.observedAt = new Date("2026-06-09T08:00:00.000Z");
+
+    const newerLowCredibility = observation("newer-low", "PENDING");
+    newerLowCredibility.credibility = 0.4;
+    newerLowCredibility.observedAt = new Date("2026-06-09T10:00:00.000Z");
+
+    const olderHighCredibility = observation("older-high", "PENDING");
+    olderHighCredibility.credibility = 0.8;
+    olderHighCredibility.observedAt = new Date("2026-06-09T07:00:00.000Z");
+
+    const grouped = groupObservationsForReview([olderLowCredibility, newerLowCredibility, olderHighCredibility]);
+
+    expect(grouped.activePool.map((item) => item.id)).toEqual(["older-high", "newer-low", "older-low"]);
+  });
 });

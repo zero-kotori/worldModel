@@ -77,17 +77,24 @@ function reviewCandidateSort(a: ObservationRecord, b: ObservationRecord) {
   return b.observedAt.getTime() - a.observedAt.getTime();
 }
 
+function pendingObservationSort(a: ObservationRecord, b: ObservationRecord) {
+  const credibilityDelta = b.credibility - a.credibility;
+  if (Math.abs(credibilityDelta) > 0.000001) return credibilityDelta;
+  return b.observedAt.getTime() - a.observedAt.getTime();
+}
+
 export function groupObservationsForReview(observations: ObservationRecord[]) {
   const reviewCandidates = observations
     .filter((observation) => observation.status === "PENDING" && getObservationRecommendedLinks(observation).length > 0)
     .sort(reviewCandidateSort);
+  const activePool = observations
+    .filter((observation) => observation.status === "PENDING" && getObservationRecommendedLinks(observation).length === 0)
+    .sort(pendingObservationSort);
 
   return {
     unknown: observations.filter((observation) => observation.status === "UNKNOWN"),
     duplicates: observations.filter((observation) => observation.status === "DUPLICATE"),
     reviewCandidates,
-    activePool: observations.filter(
-      (observation) => observation.status === "PENDING" && getObservationRecommendedLinks(observation).length === 0
-    )
+    activePool
   };
 }
