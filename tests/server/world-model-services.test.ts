@@ -1166,4 +1166,40 @@ describe("world model services", () => {
     await expect(services.sources.listSources()).resolves.toHaveLength(1);
     await expect(services.models.listArtifacts()).resolves.toHaveLength(1);
   });
+
+  it("lists and creates default public source presets without duplicates", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+
+    const presets = await services.sources.listPresets();
+    const arxivPreset = presets.find((preset) => preset.id === "arxiv-cs-ai");
+    const hnPreset = presets.find((preset) => preset.id === "hn-ai-search");
+
+    expect(arxivPreset).toMatchObject({
+      name: "arXiv cs.AI RSS",
+      kind: "RSS",
+      adapter: "rss",
+      url: "https://rss.arxiv.org/rss/cs.AI",
+      installed: false
+    });
+    expect(hnPreset).toMatchObject({
+      name: "Hacker News AI Search",
+      url: "https://hnrss.org/newest?q=AI+OR+LLM+OR+agent&count=50"
+    });
+
+    const created = await services.sources.createPreset("arxiv-cs-ai");
+    const createdAgain = await services.sources.createPreset("arxiv-cs-ai");
+    const sources = await services.sources.listSources();
+    const updatedPresets = await services.sources.listPresets();
+
+    expect(created).toMatchObject({
+      name: "arXiv cs.AI RSS",
+      kind: "RSS",
+      url: "https://rss.arxiv.org/rss/cs.AI",
+      enabled: true,
+      autoConfirm: false
+    });
+    expect(createdAgain.id).toBe(created.id);
+    expect(sources.filter((source) => source.url === "https://rss.arxiv.org/rss/cs.AI")).toHaveLength(1);
+    expect(updatedPresets.find((preset) => preset.id === "arxiv-cs-ai")?.installed).toBe(true);
+  });
 });

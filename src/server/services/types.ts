@@ -309,6 +309,12 @@ export type CreateSourceInput = Omit<ObservationSourceRecord, "id" | "createdAt"
 export type RawObservationInput = Pick<CreateObservationInput, "title" | "content" | "url" | "author" | "publishedAt">;
 export type ImportArtifactInput = Omit<ModelArtifactRecord, "id" | "createdAt">;
 
+export type SourcePresetRecord = CreateSourceInput & {
+  id: string;
+  description: string;
+  installed: boolean;
+};
+
 export type ConfirmAndApplyEvidenceResult = {
   evidence: EvidenceRecord;
   event: BayesianUpdateEventRecord;
@@ -379,6 +385,8 @@ export type WorldModelServices = {
   };
   sources: {
     listSources(): Promise<ObservationSourceRecord[]>;
+    listPresets(): Promise<SourcePresetRecord[]>;
+    createPreset(id: string): Promise<ObservationSourceRecord>;
     createSource(input: CreateSourceInput): Promise<ObservationSourceRecord>;
     runDryRun(sourceId: string, observations: RawObservationInput[]): Promise<ObservationRunRecord>;
     runSource(sourceId: string, options?: RunSourceOptions): Promise<ObservationRunRecord>;

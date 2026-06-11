@@ -11,6 +11,7 @@ import {
 } from "@/domain/updates";
 import { normalizeMutuallyExclusive } from "@/domain/bayes";
 import type { EstimatorOutput } from "@/domain/likelihood";
+import { getSourcePreset, listSourcePresets } from "@/lib/world-model-source-presets";
 import type { LikelihoodEstimator } from "@/server/models/estimators";
 import { createRecordId } from "@/server/services/in-memory-store";
 import { createSourceAdapter, type AdapterDependencies } from "@/server/sources/adapters";
@@ -1151,6 +1152,30 @@ export function createWorldModelServices(
       },
       listRuns() {
         return store.listObservationRuns();
+      },
+      async listPresets() {
+        return listSourcePresets(await store.listSources());
+      },
+      async createPreset(id: string) {
+        const preset = getSourcePreset(id);
+        if (!preset) throw new Error(`Source preset not found: ${id}`);
+        const existing = (await store.listSources()).find((source) => source.url === preset.url || source.name === preset.name);
+        if (existing) return existing;
+        const createdAt = now();
+        return store.createSource({
+          id: createRecordId("source"),
+          name: preset.name,
+          kind: preset.kind,
+          url: preset.url,
+          adapter: preset.adapter,
+          credentialRef: preset.credentialRef,
+          credibility: preset.credibility,
+          enabled: preset.enabled,
+          autoConfirm: preset.autoConfirm,
+          autoConfirmThreshold: preset.autoConfirmThreshold,
+          createdAt,
+          updatedAt: createdAt
+        });
       },
       async createSource(input: CreateSourceInput) {
         const parsed = sourceSchema.parse(input);

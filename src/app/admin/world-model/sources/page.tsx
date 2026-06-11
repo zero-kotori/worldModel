@@ -1,5 +1,6 @@
 import { Play, Plus } from "lucide-react";
 import {
+  createSourcePresetAction,
   createSourceAction,
   runEvidenceLoopAction,
   runSourceAction,
@@ -8,6 +9,7 @@ import {
 } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
+import { listSourcePresets } from "@/lib/world-model-source-presets";
 import { getLatestSourceRun, runErrorSummary, sourceHealthLabel } from "@/lib/world-model-sources-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
@@ -31,12 +33,41 @@ export default async function SourcesPage({ searchParams }: PageProps) {
     label: `${readableCode(sourceCodes, source.id, "S")} · ${source.name} · ${source.kind}`
   }));
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
+  const sourcePresets = listSourcePresets(data.sources);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
       <DataWarning message={data.error} />
       <StatusNotice message={firstParam(params.message)} />
       <StatusNotice message={firstParam(params.error)} tone="error" />
+      <PageSection title="推荐来源">
+        <div className="grid gap-3 lg:grid-cols-2">
+          {sourcePresets.map((preset) => (
+            <div key={preset.id} className="rounded-md border border-line bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-ink">{preset.name}</div>
+                  <div className="mt-1 text-xs text-ink/55">
+                    {preset.kind} · 可信度 {preset.credibility.toFixed(2)} · 阈值 {preset.autoConfirmThreshold.toFixed(2)}
+                  </div>
+                  <div className="mt-2 break-all text-xs text-ink/55">{preset.url}</div>
+                  <div className="mt-2 text-sm text-ink/70">{preset.description}</div>
+                </div>
+                {preset.installed ? (
+                  <span className="rounded-md bg-moss/10 px-3 py-2 text-sm font-semibold text-moss">已添加</span>
+                ) : (
+                  <form action={createSourcePresetAction}>
+                    <input type="hidden" name="presetId" value={preset.id} />
+                    <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-moss px-3 text-sm font-semibold text-moss">
+                      <Plus size={16} /> 添加
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </PageSection>
       <PageSection title="来源配置">
         <form action={createSourceAction} className="grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-4">
           <Field label="名称" name="name" required />

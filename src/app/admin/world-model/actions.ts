@@ -306,6 +306,13 @@ export async function createSourceAction(formData: FormData) {
   });
 }
 
+export async function createSourcePresetAction(formData: FormData) {
+  await runAction("/admin/world-model/sources", "推荐来源已添加", async () => {
+    const services = getWorldModelServices();
+    await services.sources.createPreset(text(formData, "presetId"));
+  });
+}
+
 export async function runSourceDryRunAction(formData: FormData) {
   await runAction("/admin/world-model/sources", "Dry-run 已记录", async () => {
     const services = getWorldModelServices();
