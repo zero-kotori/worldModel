@@ -1,6 +1,7 @@
 import { Upload } from "lucide-react";
 import { importModelArtifactAction } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
+import { summarizeLlmScorerConfig } from "@/lib/world-model-models-ui";
 import { Field, SelectField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
 
@@ -14,15 +15,47 @@ function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function scorerToneClass(tone: ReturnType<typeof summarizeLlmScorerConfig>["tone"]) {
+  return tone === "healthy" ? "text-moss" : "text-amber-700";
+}
+
 export default async function ModelsPage({ searchParams }: PageProps) {
   const data = await loadWorldModelData();
   const params = (await searchParams) ?? {};
+  const llmScorer = summarizeLlmScorerConfig(process.env);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
       <DataWarning message={data.error} />
       <StatusNotice message={firstParam(params.message)} />
       <StatusNotice message={firstParam(params.error)} tone="error" />
+      <PageSection title="LLM 主评分器">
+        <div className="rounded-md border border-line bg-white p-4">
+          <div className="grid gap-4 text-sm lg:grid-cols-5">
+            <div>
+              <div className="text-xs text-ink/55">状态</div>
+              <div className={`mt-1 font-semibold ${scorerToneClass(llmScorer.tone)}`}>{llmScorer.label}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">Provider</div>
+              <div className="mt-1 text-ink">{llmScorer.provider}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">Base URL</div>
+              <div className="mt-1 break-all font-mono text-xs text-ink">{llmScorer.baseUrl}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">Model</div>
+              <div className="mt-1 font-mono text-xs text-ink">{llmScorer.model}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">API Key</div>
+              <div className="mt-1 text-ink">{llmScorer.hasApiKey ? "已配置" : "未配置"}</div>
+            </div>
+          </div>
+          <div className="mt-3 border-t border-line pt-3 text-sm text-ink/65">{llmScorer.detail}</div>
+        </div>
+      </PageSection>
       <PageSection title="模型产物导入">
         <form action={importModelArtifactAction} className="grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-4">
           <Field label="名称" name="name" defaultValue="lightweight-local" required />
