@@ -7,7 +7,7 @@ import { getWorldModelServices } from "@/server/services";
 import { getEvidenceLoopWorkerController } from "@/server/automation/local-worker";
 import { readEvidenceLinksFromFormData } from "@/lib/world-model-evidence-ui";
 import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
-import type { BeliefCategory, HypothesisStance, ObservationSourceKind } from "@/server/services/types";
+import type { AutomationWorkerConfigRecord, BeliefCategory, HypothesisStance, ObservationSourceKind } from "@/server/services/types";
 
 function text(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
@@ -34,6 +34,49 @@ function values(formData: FormData, key: string) {
     .getAll(key)
     .map((value) => String(value).trim())
     .filter(Boolean);
+}
+
+function defaultWorkerConfig(id = "default"): Omit<AutomationWorkerConfigRecord, "createdAt" | "updatedAt"> {
+  return {
+    id,
+    enabled: false,
+    intervalMs: 900_000,
+    failureBackoffMultiplier: 2,
+    maxIntervalMs: 3_600_000,
+    reviewOnly: true,
+    maxObservations: 20,
+    candidateThreshold: 0.25,
+    autoConfirmThreshold: 0.85,
+    bootstrapDefaultSources: true,
+    forceAutoApply: false
+  };
+}
+
+function workerConfigFromForm(formData: FormData, enabled: boolean): Omit<AutomationWorkerConfigRecord, "createdAt" | "updatedAt"> {
+  return {
+    id: text(formData, "workerId") || "default",
+    enabled,
+    intervalMs: number(formData, "intervalSeconds", 900) * 1000,
+    failureBackoffMultiplier: number(formData, "failureBackoffMultiplier", 2),
+    maxIntervalMs: number(formData, "maxIntervalSeconds", 3600) * 1000,
+    reviewOnly: bool(formData, "reviewOnly"),
+    maxObservations: optionalNumber(formData, "maxObservations"),
+    candidateThreshold: optionalNumber(formData, "candidateThreshold"),
+    autoConfirmThreshold: optionalNumber(formData, "autoConfirmThreshold"),
+    bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
+    forceAutoApply: bool(formData, "forceAutoApply")
+  };
+}
+
+function loopOptionsFromWorkerConfig(config: Omit<AutomationWorkerConfigRecord, "createdAt" | "updatedAt">) {
+  return {
+    reviewOnly: config.reviewOnly,
+    maxObservations: config.maxObservations,
+    candidateThreshold: config.candidateThreshold,
+    autoConfirmThreshold: config.autoConfirmThreshold,
+    bootstrapDefaultSources: config.bootstrapDefaultSources,
+    forceAutoApply: config.forceAutoApply
+  };
 }
 
 function actionErrorMessage(error: unknown) {
@@ -345,20 +388,14 @@ export async function runEvidenceLoopAction(formData: FormData) {
 export async function startEvidenceLoopWorkerAction(formData: FormData) {
   await runAction("/admin/world-model/sources", "本地守护进程已启动", async () => {
     const services = getWorldModelServices();
+    const config = await services.automation.saveWorkerConfig(workerConfigFromForm(formData, true));
     await getEvidenceLoopWorkerController().start(
       {
-        workerId: text(formData, "workerId") || "default",
-        intervalMs: number(formData, "intervalSeconds", 900) * 1000,
-        failureBackoffMultiplier: number(formData, "failureBackoffMultiplier", 2),
-        maxIntervalMs: number(formData, "maxIntervalSeconds", 3600) * 1000,
-        loopOptions: {
-          reviewOnly: bool(formData, "reviewOnly"),
-          maxObservations: optionalNumber(formData, "maxObservations"),
-          candidateThreshold: optionalNumber(formData, "candidateThreshold"),
-          autoConfirmThreshold: optionalNumber(formData, "autoConfirmThreshold"),
-          bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
-          forceAutoApply: bool(formData, "forceAutoApply")
-        }
+        workerId: config.id,
+        intervalMs: config.intervalMs,
+        failureBackoffMultiplier: config.failureBackoffMultiplier,
+        maxIntervalMs: config.maxIntervalMs,
+        loopOptions: loopOptionsFromWorkerConfig(config)
       },
       services.automation
     );
@@ -368,7 +405,13 @@ export async function startEvidenceLoopWorkerAction(formData: FormData) {
 export async function stopEvidenceLoopWorkerAction(formData: FormData) {
   await runAction("/admin/world-model/sources", "本地守护进程已停止", async () => {
     const services = getWorldModelServices();
-    await getEvidenceLoopWorkerController().stop(text(formData, "workerId") || "default", services.automation);
+    const workerId = text(formData, "workerId") || "default";
+    const existing = (await services.automation.listWorkerConfigs()).find((config) => config.id === workerId);
+    await services.automation.saveWorkerConfig({
+      ...(existing ?? defaultWorkerConfig(workerId)),
+      enabled: false
+    });
+    await getEvidenceLoopWorkerController().stop(workerId, services.automation);
   });
 }
 

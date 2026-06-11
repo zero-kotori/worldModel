@@ -288,6 +288,24 @@ model AutomationHeartbeat {
   @@index([status, heartbeatAt])
 }
 
+model AutomationWorkerConfig {
+  id                      String   @id
+  enabled                 Boolean  @default(false)
+  intervalMs              Int
+  failureBackoffMultiplier Float   @default(2)
+  maxIntervalMs           Int
+  reviewOnly              Boolean  @default(true)
+  maxObservations         Int?
+  candidateThreshold      Float?
+  autoConfirmThreshold    Float?
+  bootstrapDefaultSources Boolean  @default(true)
+  forceAutoApply          Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([enabled, updatedAt])
+}
+
 model ModelArtifact {
   id        String            @id @default(cuid())
   name      String

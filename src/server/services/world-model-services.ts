@@ -17,6 +17,7 @@ import { createRecordId } from "@/server/services/in-memory-store";
 import { createSourceAdapter, type AdapterDependencies } from "@/server/sources/adapters";
 import type {
   AutomationHeartbeatRecord,
+  AutomationWorkerConfigRecord,
   BayesianUpdateEventRecord,
   ConfirmAndApplyEvidenceResult,
   ConfirmEvidenceInput,
@@ -203,6 +204,20 @@ const automationHeartbeatSchema = z.object({
   intervalMs: z.number().int().nonnegative(),
   consecutiveFailureCount: z.number().int().nonnegative(),
   lastError: z.string().optional()
+});
+
+const automationWorkerConfigSchema = z.object({
+  id: z.string().trim().min(1),
+  enabled: z.boolean(),
+  intervalMs: z.number().int().positive(),
+  failureBackoffMultiplier: z.number().finite().min(1),
+  maxIntervalMs: z.number().int().positive(),
+  reviewOnly: z.boolean(),
+  maxObservations: z.number().int().positive().optional(),
+  candidateThreshold: probabilitySchema.optional(),
+  autoConfirmThreshold: probabilitySchema.optional(),
+  bootstrapDefaultSources: z.boolean(),
+  forceAutoApply: z.boolean()
 });
 
 function parseBeliefInput(input: CreateBeliefInput) {
@@ -1147,6 +1162,20 @@ export function createWorldModelServices(
     });
   }
 
+  async function saveAutomationWorkerConfig(
+    input: Omit<AutomationWorkerConfigRecord, "createdAt" | "updatedAt">
+  ): Promise<AutomationWorkerConfigRecord> {
+    const parsed = automationWorkerConfigSchema.parse(input);
+    const timestamp = now();
+    const existing = (await store.listAutomationWorkerConfigs()).find((config) => config.id === parsed.id);
+
+    return store.upsertAutomationWorkerConfig({
+      ...parsed,
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp
+    });
+  }
+
   return {
     beliefs: {
       async createBelief(input) {
@@ -1323,6 +1352,10 @@ export function createWorldModelServices(
       recordHeartbeat: recordAutomationHeartbeat,
       listHeartbeats() {
         return store.listAutomationHeartbeats();
+      },
+      saveWorkerConfig: saveAutomationWorkerConfig,
+      listWorkerConfigs() {
+        return store.listAutomationWorkerConfigs();
       }
     },
     models: {

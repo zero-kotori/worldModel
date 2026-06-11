@@ -165,6 +165,22 @@ export type AutomationHeartbeatRecord = {
   updatedAt: Date;
 };
 
+export type AutomationWorkerConfigRecord = {
+  id: string;
+  enabled: boolean;
+  intervalMs: number;
+  failureBackoffMultiplier: number;
+  maxIntervalMs: number;
+  reviewOnly: boolean;
+  maxObservations?: number;
+  candidateThreshold?: number;
+  autoConfirmThreshold?: number;
+  bootstrapDefaultSources: boolean;
+  forceAutoApply: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type RunSourceOptions = {
   reviewOnly?: boolean;
   forceAutoApply?: boolean;
@@ -367,6 +383,8 @@ export type WorldModelStore = {
   listObservationRuns(): Promise<ObservationRunRecord[]>;
   upsertAutomationHeartbeat(input: AutomationHeartbeatRecord): Promise<AutomationHeartbeatRecord>;
   listAutomationHeartbeats(): Promise<AutomationHeartbeatRecord[]>;
+  upsertAutomationWorkerConfig(input: AutomationWorkerConfigRecord): Promise<AutomationWorkerConfigRecord>;
+  listAutomationWorkerConfigs(): Promise<AutomationWorkerConfigRecord[]>;
   createModelArtifact(input: ModelArtifactRecord): Promise<ModelArtifactRecord>;
   listModelArtifacts(): Promise<ModelArtifactRecord[]>;
 };
@@ -416,6 +434,8 @@ export type WorldModelServices = {
     runEvidenceLoop(options?: EvidenceLoopOptions): Promise<EvidenceLoopResult>;
     recordHeartbeat(input: Omit<AutomationHeartbeatRecord, "createdAt" | "updatedAt">): Promise<AutomationHeartbeatRecord>;
     listHeartbeats(): Promise<AutomationHeartbeatRecord[]>;
+    saveWorkerConfig(input: Omit<AutomationWorkerConfigRecord, "createdAt" | "updatedAt">): Promise<AutomationWorkerConfigRecord>;
+    listWorkerConfigs(): Promise<AutomationWorkerConfigRecord[]>;
   };
   models: {
     listArtifacts(): Promise<ModelArtifactRecord[]>;

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AutomationHeartbeatRecord,
+  AutomationWorkerConfigRecord,
   BayesianUpdateEventRecord,
   BeliefRecord,
   EvidenceRecord,
@@ -64,6 +65,14 @@ function cloneAutomationHeartbeat(record: AutomationHeartbeatRecord): Automation
   };
 }
 
+function cloneAutomationWorkerConfig(record: AutomationWorkerConfigRecord): AutomationWorkerConfigRecord {
+  return {
+    ...record,
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt)
+  };
+}
+
 export function createInMemoryWorldModelStore(): WorldModelStore {
   const beliefs: BeliefRecord[] = [];
   const observations: ObservationRecord[] = [];
@@ -73,6 +82,7 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
   const sources: ObservationSourceRecord[] = [];
   const observationRuns: ObservationRunRecord[] = [];
   const automationHeartbeats: AutomationHeartbeatRecord[] = [];
+  const automationWorkerConfigs: AutomationWorkerConfigRecord[] = [];
   const modelArtifacts: ModelArtifactRecord[] = [];
 
   return {
@@ -263,6 +273,21 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
       return automationHeartbeats
         .map(cloneAutomationHeartbeat)
         .sort((a, b) => b.heartbeatAt.getTime() - a.heartbeatAt.getTime());
+    },
+    async upsertAutomationWorkerConfig(input) {
+      const existing = automationWorkerConfigs.find((item) => item.id === input.id);
+      const record = cloneAutomationWorkerConfig(input);
+      if (existing) {
+        Object.assign(existing, record, { createdAt: existing.createdAt });
+        return cloneAutomationWorkerConfig(existing);
+      }
+      automationWorkerConfigs.push(record);
+      return cloneAutomationWorkerConfig(record);
+    },
+    async listAutomationWorkerConfigs() {
+      return automationWorkerConfigs
+        .map(cloneAutomationWorkerConfig)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
     },
     async createModelArtifact(input) {
       const existing = modelArtifacts.find((item) => item.name === input.name && item.version === input.version);

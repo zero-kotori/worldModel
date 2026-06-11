@@ -33,6 +33,22 @@ function healthToneClass(tone: ReturnType<typeof summarizeAutomationHealth>["ton
   return "text-ink/55";
 }
 
+function fallbackWorkerConfig() {
+  return {
+    id: "default",
+    enabled: false,
+    intervalMs: 900_000,
+    failureBackoffMultiplier: 2,
+    maxIntervalMs: 3_600_000,
+    reviewOnly: true,
+    maxObservations: 20,
+    candidateThreshold: 0.25,
+    autoConfirmThreshold: 0.85,
+    bootstrapDefaultSources: true,
+    forceAutoApply: false
+  };
+}
+
 export default async function SourcesPage({ searchParams }: PageProps) {
   const data = await loadWorldModelData();
   const params = (await searchParams) ?? {};
@@ -44,6 +60,11 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
   const sourcePresets = listSourcePresets(data.sources);
   const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats);
+  const workerConfig = data.workerConfigs[0] ?? fallbackWorkerConfig();
+  const stopWorkerId =
+    automationHealth.worker.status && automationHealth.worker.status !== "IDLE"
+      ? automationHealth.worker.id ?? workerConfig.id
+      : workerConfig.id;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -206,28 +227,57 @@ export default async function SourcesPage({ searchParams }: PageProps) {
         </form>
         <div className="mt-3 grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-[1fr_auto]">
           <form action={startEvidenceLoopWorkerAction} className="grid gap-3 lg:grid-cols-5">
-            <Field label="Worker" name="workerId" defaultValue="default" required />
-            <Field label="间隔秒" name="intervalSeconds" type="number" min="60" defaultValue="900" />
-            <Field label="最大观察" name="maxObservations" type="number" min="1" defaultValue="20" />
-            <Field label="候选阈值" name="candidateThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.25" />
-            <Field label="应用阈值" name="autoConfirmThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.85" />
-            <Field label="失败退避" name="failureBackoffMultiplier" type="number" step="0.1" min="1" defaultValue="2" />
-            <Field label="最长间隔秒" name="maxIntervalSeconds" type="number" min="60" defaultValue="3600" />
+            <Field label="Worker" name="workerId" defaultValue={workerConfig.id} required />
+            <Field label="间隔秒" name="intervalSeconds" type="number" min="60" defaultValue={Math.floor(workerConfig.intervalMs / 1000)} />
+            <Field label="最大观察" name="maxObservations" type="number" min="1" defaultValue={workerConfig.maxObservations ?? 20} />
+            <Field
+              label="候选阈值"
+              name="candidateThreshold"
+              type="number"
+              step="0.01"
+              min="0"
+              max="1"
+              defaultValue={workerConfig.candidateThreshold ?? 0.25}
+            />
+            <Field
+              label="应用阈值"
+              name="autoConfirmThreshold"
+              type="number"
+              step="0.01"
+              min="0"
+              max="1"
+              defaultValue={workerConfig.autoConfirmThreshold ?? 0.85}
+            />
+            <Field
+              label="失败退避"
+              name="failureBackoffMultiplier"
+              type="number"
+              step="0.1"
+              min="1"
+              defaultValue={workerConfig.failureBackoffMultiplier}
+            />
+            <Field
+              label="最长间隔秒"
+              name="maxIntervalSeconds"
+              type="number"
+              min="60"
+              defaultValue={Math.floor(workerConfig.maxIntervalMs / 1000)}
+            />
             <label className="flex items-center gap-2 text-sm text-ink/70">
-              <input name="reviewOnly" type="checkbox" defaultChecked /> 仅生成待审
+              <input name="reviewOnly" type="checkbox" defaultChecked={workerConfig.reviewOnly} /> 仅生成待审
             </label>
             <label className="flex items-center gap-2 text-sm text-ink/70">
-              <input name="bootstrapDefaultSources" type="checkbox" defaultChecked /> 补齐推荐来源
+              <input name="bootstrapDefaultSources" type="checkbox" defaultChecked={workerConfig.bootstrapDefaultSources} /> 补齐推荐来源
             </label>
             <label className="flex items-center gap-2 text-sm text-ink/70">
-              <input name="forceAutoApply" type="checkbox" /> 自动应用
+              <input name="forceAutoApply" type="checkbox" defaultChecked={workerConfig.forceAutoApply} /> 自动应用
             </label>
             <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white lg:col-span-2">
               <Play size={16} /> 启动守护进程
             </button>
           </form>
           <form action={stopEvidenceLoopWorkerAction} className="grid content-end gap-3">
-            <Field label="Worker" name="workerId" defaultValue={automationHealth.worker.id ?? "default"} required />
+            <Field label="Worker" name="workerId" defaultValue={stopWorkerId} required />
             <button className="inline-flex min-h-9 items-center justify-center rounded-md border border-line px-3 text-sm font-semibold text-ink">
               停止
             </button>

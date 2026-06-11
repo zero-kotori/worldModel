@@ -24,6 +24,12 @@ function createAutomation(overrides: Partial<Automation> = {}): Automation {
       updatedAt: input.heartbeatAt
     }),
     listHeartbeats: async () => [],
+    saveWorkerConfig: async (input) => ({
+      ...input,
+      createdAt: new Date("2026-06-11T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-11T00:00:00.000Z")
+    }),
+    listWorkerConfigs: async () => [],
     ...overrides
   };
 }

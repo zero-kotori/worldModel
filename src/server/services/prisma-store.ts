@@ -1,5 +1,6 @@
 import type {
   AutomationHeartbeat,
+  AutomationWorkerConfig,
   BayesianUpdateEvent,
   Belief,
   Evidence,
@@ -17,6 +18,7 @@ import type { EstimatorOutput } from "@/domain/likelihood";
 import type { ProbabilitySnapshot } from "@/domain/updates";
 import type {
   AutomationHeartbeatRecord,
+  AutomationWorkerConfigRecord,
   BayesianUpdateEventRecord,
   BeliefRecord,
   EvidenceRecord,
@@ -216,6 +218,24 @@ function toAutomationHeartbeatRecord(record: AutomationHeartbeat): AutomationHea
     intervalMs: record.intervalMs,
     consecutiveFailureCount: record.consecutiveFailureCount,
     lastError: record.lastError,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
+  };
+}
+
+function toAutomationWorkerConfigRecord(record: AutomationWorkerConfig): AutomationWorkerConfigRecord {
+  return {
+    id: record.id,
+    enabled: record.enabled,
+    intervalMs: record.intervalMs,
+    failureBackoffMultiplier: record.failureBackoffMultiplier,
+    maxIntervalMs: record.maxIntervalMs,
+    reviewOnly: record.reviewOnly,
+    maxObservations: record.maxObservations ?? undefined,
+    candidateThreshold: record.candidateThreshold ?? undefined,
+    autoConfirmThreshold: record.autoConfirmThreshold ?? undefined,
+    bootstrapDefaultSources: record.bootstrapDefaultSources,
+    forceAutoApply: record.forceAutoApply,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
@@ -620,6 +640,44 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
     async listAutomationHeartbeats() {
       const records = await prisma.automationHeartbeat.findMany({ orderBy: { heartbeatAt: "desc" } });
       return records.map(toAutomationHeartbeatRecord);
+    },
+    async upsertAutomationWorkerConfig(input) {
+      const record = await prisma.automationWorkerConfig.upsert({
+        where: { id: input.id },
+        update: {
+          enabled: input.enabled,
+          intervalMs: input.intervalMs,
+          failureBackoffMultiplier: input.failureBackoffMultiplier,
+          maxIntervalMs: input.maxIntervalMs,
+          reviewOnly: input.reviewOnly,
+          maxObservations: input.maxObservations,
+          candidateThreshold: input.candidateThreshold,
+          autoConfirmThreshold: input.autoConfirmThreshold,
+          bootstrapDefaultSources: input.bootstrapDefaultSources,
+          forceAutoApply: input.forceAutoApply,
+          updatedAt: input.updatedAt
+        },
+        create: {
+          id: input.id,
+          enabled: input.enabled,
+          intervalMs: input.intervalMs,
+          failureBackoffMultiplier: input.failureBackoffMultiplier,
+          maxIntervalMs: input.maxIntervalMs,
+          reviewOnly: input.reviewOnly,
+          maxObservations: input.maxObservations,
+          candidateThreshold: input.candidateThreshold,
+          autoConfirmThreshold: input.autoConfirmThreshold,
+          bootstrapDefaultSources: input.bootstrapDefaultSources,
+          forceAutoApply: input.forceAutoApply,
+          createdAt: input.createdAt,
+          updatedAt: input.updatedAt
+        }
+      });
+      return toAutomationWorkerConfigRecord(record);
+    },
+    async listAutomationWorkerConfigs() {
+      const records = await prisma.automationWorkerConfig.findMany({ orderBy: { updatedAt: "desc" } });
+      return records.map(toAutomationWorkerConfigRecord);
     },
     async createModelArtifact(input) {
       const record = await prisma.modelArtifact.upsert({

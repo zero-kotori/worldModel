@@ -1414,6 +1414,49 @@ describe("world model services", () => {
     expect(heartbeats[0]).toEqual(updated);
   });
 
+  it("saves and updates automation worker configuration", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+
+    const first = await services.automation.saveWorkerConfig({
+      id: "default",
+      enabled: true,
+      intervalMs: 900_000,
+      failureBackoffMultiplier: 2,
+      maxIntervalMs: 3_600_000,
+      reviewOnly: true,
+      maxObservations: 20,
+      candidateThreshold: 0.25,
+      autoConfirmThreshold: 0.85,
+      bootstrapDefaultSources: true,
+      forceAutoApply: false
+    });
+    const updated = await services.automation.saveWorkerConfig({
+      id: "default",
+      enabled: false,
+      intervalMs: 300_000,
+      failureBackoffMultiplier: 3,
+      maxIntervalMs: 1_800_000,
+      reviewOnly: false,
+      maxObservations: 5,
+      candidateThreshold: 0.3,
+      autoConfirmThreshold: 0.9,
+      bootstrapDefaultSources: false,
+      forceAutoApply: true
+    });
+    const configs = await services.automation.listWorkerConfigs();
+
+    expect(first).toMatchObject({ id: "default", enabled: true, intervalMs: 900_000 });
+    expect(updated).toMatchObject({
+      id: "default",
+      enabled: false,
+      intervalMs: 300_000,
+      failureBackoffMultiplier: 3,
+      forceAutoApply: true
+    });
+    expect(configs).toHaveLength(1);
+    expect(configs[0]).toEqual(updated);
+  });
+
   it("creates a graph model for beliefs, hypotheses, evidence, and update events", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const belief = await services.beliefs.createBelief({
