@@ -3,12 +3,21 @@ import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { DataWarning, PageSection } from "@/components/world-model/PageSection";
 import { WorldModelGraphView } from "@/components/world-model/WorldModelGraphView";
 import { isHypothesisCurrentlyEffective, summarizeHypothesisTimeCoverage } from "@/lib/world-model-beliefs-ui";
+import { summarizeDashboardActions } from "@/lib/world-model-dashboard-ui";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { createWorldModelGraph } from "@/lib/world-model-graph";
 import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
+import { summarizeLlmScorerConfig } from "@/lib/world-model-models-ui";
 import { categoryLabels } from "@/lib/world-model-navigation";
+import { summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
 
 export const dynamic = "force-dynamic";
+
+function actionToneClass(level: ReturnType<typeof summarizeDashboardActions>[number]["level"]) {
+  if (level === "error") return "border-berry text-berry";
+  if (level === "warning") return "border-amber-600 text-amber-700";
+  return "border-line text-ink";
+}
 
 export default async function WorldModelDashboardPage() {
   const data = await loadWorldModelData();
@@ -23,7 +32,34 @@ export default async function WorldModelDashboardPage() {
     data.beliefs.flatMap((belief) => belief.hypotheses),
     referenceTime
   );
-  const pendingObservations = data.observations.filter((item) => item.status === "PENDING" || item.status === "DUPLICATE");
+  const pendingObservations = data.observations.filter((item) => item.status === "PENDING" || item.status === "DUPLICATE" || item.status === "UNKNOWN");
+  const automationSources = data.sources.filter((source) => source.kind !== "MANUAL");
+  const activeBeliefs = data.beliefs.filter((belief) => belief.status === "ACTIVE");
+  const activeHypothesisCount = activeBeliefs.reduce(
+    (count, belief) => count + belief.hypotheses.filter((hypothesis) => hypothesis.status === "ACTIVE").length,
+    0
+  );
+  const effectiveHypothesisCount = activeBeliefs.reduce(
+    (count, belief) => count + belief.hypotheses.filter((hypothesis) => isHypothesisCurrentlyEffective(hypothesis, referenceTime)).length,
+    0
+  );
+  const llmScorer = summarizeLlmScorerConfig(process.env);
+  const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats, {
+    workerRuntime: data.workerRuntime,
+    sources: automationSources,
+    sourceCount: automationSources.length,
+    enabledSourceCount: automationSources.filter((source) => source.enabled).length,
+    activeBeliefCount: activeBeliefs.length,
+    activeHypothesisCount,
+    effectiveHypothesisCount,
+    openObservationCount: pendingObservations.length,
+    llmScorerReady: llmScorer.tone === "healthy"
+  });
+  const dashboardActions = summarizeDashboardActions({
+    observations: data.observations,
+    reviewDueHypothesisCount: hypothesisCoverage.reviewDueCount,
+    automation: automationHealth
+  });
   const metrics = [
     ["信念", data.beliefs.length, "/admin/world-model/beliefs"],
     ["当前有效假设", hypothesisCoverage.effectiveCount, "/admin/world-model/beliefs"],
@@ -43,6 +79,24 @@ export default async function WorldModelDashboardPage() {
           </Link>
         ))}
       </div>
+      <PageSection title="闭环行动">
+        {dashboardActions.length === 0 ? (
+          <div className="rounded-md border border-dashed border-line bg-white px-4 py-6 text-sm text-ink/55">暂无待处理事项</div>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {dashboardActions.slice(0, 6).map((action) => (
+              <Link
+                key={`${action.label}-${action.href}`}
+                href={action.href}
+                className={`rounded-md border bg-white p-4 hover:border-moss ${actionToneClass(action.level)}`}
+              >
+                <div className="text-sm font-semibold">{action.label}</div>
+                <div className="mt-2 text-sm text-ink/65">{action.detail}</div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </PageSection>
       <PageSection title="关系图谱">
         <WorldModelGraphView graph={graph} editor={graphEditor} />
       </PageSection>
