@@ -3,7 +3,7 @@ import { createBeliefAction, createHypothesisAction, createRecommendedHypothesis
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { getWorldModelServices } from "@/server/services";
 import { categoryLabels, hypothesisStanceLabels, probabilityModeLabels } from "@/lib/world-model-navigation";
-import { hypothesisTimeStatus } from "@/lib/world-model-beliefs-ui";
+import { hypothesisTimeStatus, isHypothesisReviewDue } from "@/lib/world-model-beliefs-ui";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { createWorldModelGraph } from "@/lib/world-model-graph";
 import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
@@ -50,8 +50,16 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
     (hypothesis) => hypothesis.createdAt
   );
   const selectedBeliefCode = firstParam(params.belief);
+  const reviewDueOnly = firstParam(params.view) === "review-due";
   const selectedBelief = data.beliefs.find((belief) => readableCode(beliefCodes, belief.id, "B") === selectedBeliefCode);
-  const graphBeliefs = selectedBelief ? [selectedBelief] : data.beliefs;
+  const reviewDueBeliefs = data.beliefs
+    .map((belief) => ({
+      ...belief,
+      hypotheses: belief.hypotheses.filter((hypothesis) => isHypothesisReviewDue(hypothesis, referenceTime))
+    }))
+    .filter((belief) => belief.hypotheses.length > 0);
+  const visibleBeliefs = reviewDueOnly && !selectedBelief ? reviewDueBeliefs : data.beliefs;
+  const graphBeliefs = selectedBelief ? [selectedBelief] : visibleBeliefs;
   const graphBeliefIds = new Set(graphBeliefs.map((belief) => belief.id));
   const graphHypothesisIds = new Set(graphBeliefs.flatMap((belief) => belief.hypotheses.map((hypothesis) => hypothesis.id)));
   const graphEvidence = data.evidence
@@ -76,18 +84,18 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
       <PageSection title={selectedBelief ? "信念关系图谱" : "信念全局图谱"}>
         <WorldModelGraphView graph={graph} editor={graphEditor} />
       </PageSection>
-      <PageSection title="信念表">
-        {data.beliefs.length === 0 ? (
-          <EmptyState label="暂无信念" />
+      <PageSection title={reviewDueOnly ? "待复核假设" : "信念表"}>
+        {visibleBeliefs.length === 0 ? (
+          <EmptyState label={reviewDueOnly ? "暂无待复核假设" : "暂无信念"} />
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
-            {data.beliefs.map((belief) => {
+            {visibleBeliefs.map((belief) => {
               const beliefCode = readableCode(beliefCodes, belief.id, "B");
               return (
                 <details
                   key={belief.id}
                   id={beliefCode}
-                  open={selectedBeliefCode === beliefCode}
+                  open={reviewDueOnly || selectedBeliefCode === beliefCode}
                   className="rounded-md border border-line bg-white p-4 open:border-moss"
                 >
                   <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2">

@@ -2,6 +2,7 @@ import {
   datetimeLocalValue,
   hypothesisTimeStatus,
   isHypothesisCurrentlyEffective,
+  isHypothesisReviewDue,
   parseDateTimeLocalValue,
   parseDateTimePatchValue,
   summarizeHypothesisTimeCoverage
@@ -94,5 +95,13 @@ describe("world model beliefs UI", () => {
     expect(isHypothesisCurrentlyEffective({ status: "ACTIVE", expiresAt: new Date(2026, 5, 10, 9, 30, 0) }, referenceTime)).toBe(false);
     expect(isHypothesisCurrentlyEffective({ status: "ACTIVE", startsAt: new Date(2026, 5, 12, 9, 30, 0) }, referenceTime)).toBe(false);
     expect(isHypothesisCurrentlyEffective({ status: "PAUSED" }, referenceTime)).toBe(false);
+  });
+
+  it("checks whether a hypothesis needs time-window review", () => {
+    expect(isHypothesisReviewDue({ status: "ACTIVE", expiresAt: new Date(2026, 5, 10, 9, 30, 0) }, referenceTime)).toBe(true);
+    expect(isHypothesisReviewDue({ status: "ACTIVE", expiresAt: new Date(2026, 5, 13, 9, 30, 0) }, referenceTime)).toBe(true);
+    expect(isHypothesisReviewDue({ status: "ACTIVE", expiresAt: new Date(2026, 6, 20, 9, 30, 0) }, referenceTime)).toBe(false);
+    expect(isHypothesisReviewDue({ status: "ACTIVE", startsAt: new Date(2026, 5, 12, 9, 30, 0) }, referenceTime)).toBe(false);
+    expect(isHypothesisReviewDue({ status: "PAUSED", expiresAt: new Date(2026, 5, 10, 9, 30, 0) }, referenceTime)).toBe(false);
   });
 });

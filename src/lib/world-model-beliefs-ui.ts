@@ -43,6 +43,13 @@ export function isHypothesisCurrentlyEffective(hypothesis: HypothesisTimeInput, 
   return true;
 }
 
+export function isHypothesisReviewDue(hypothesis: HypothesisTimeInput, referenceTime = new Date()) {
+  if (hypothesis.status !== "ACTIVE" || !hypothesis.expiresAt) return false;
+  const expiresMs = hypothesis.expiresAt.getTime();
+  const referenceMs = referenceTime.getTime();
+  return expiresMs <= referenceMs || expiresMs - referenceMs <= EXPIRING_SOON_MS;
+}
+
 export function summarizeHypothesisTimeCoverage(hypotheses: HypothesisTimeInput[], referenceTime = new Date()) {
   const coverage = {
     activeCount: 0,
@@ -77,7 +84,7 @@ export function summarizeHypothesisTimeCoverage(hypotheses: HypothesisTimeInput[
     }
   }
 
-  coverage.reviewDueCount = coverage.expiredCount + coverage.expiringSoonCount;
+  coverage.reviewDueCount = hypotheses.filter((hypothesis) => isHypothesisReviewDue(hypothesis, referenceTime)).length;
   return coverage;
 }
 

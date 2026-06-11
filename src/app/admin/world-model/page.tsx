@@ -27,7 +27,7 @@ export default async function WorldModelDashboardPage() {
   const metrics = [
     ["信念", data.beliefs.length, "/admin/world-model/beliefs"],
     ["当前有效假设", hypothesisCoverage.effectiveCount, "/admin/world-model/beliefs"],
-    ["待复核假设", hypothesisCoverage.reviewDueCount, "/admin/world-model/beliefs"],
+    ["待复核假设", hypothesisCoverage.reviewDueCount, "/admin/world-model/beliefs?view=review-due"],
     ["待处理观察", pendingObservations.length, "/admin/world-model/observations"],
     ["已确认证据", data.evidence.length, "/admin/world-model/evidence"]
   ] as const;
