@@ -1,4 +1,5 @@
 import type {
+  AutomationHeartbeat,
   BayesianUpdateEvent,
   Belief,
   Evidence,
@@ -15,6 +16,7 @@ import type {
 import type { EstimatorOutput } from "@/domain/likelihood";
 import type { ProbabilitySnapshot } from "@/domain/updates";
 import type {
+  AutomationHeartbeatRecord,
   BayesianUpdateEventRecord,
   BeliefRecord,
   EvidenceRecord,
@@ -202,6 +204,20 @@ function toObservationRunRecord(record: ObservationRun): ObservationRunRecord {
     queryCount: record.queryCount,
     querySummary: evidenceLoopQueries(record.querySummary),
     errorMessage: record.errorMessage ?? undefined
+  };
+}
+
+function toAutomationHeartbeatRecord(record: AutomationHeartbeat): AutomationHeartbeatRecord {
+  return {
+    id: record.id,
+    status: record.status,
+    heartbeatAt: record.heartbeatAt,
+    nextRunAt: record.nextRunAt ?? undefined,
+    intervalMs: record.intervalMs,
+    consecutiveFailureCount: record.consecutiveFailureCount,
+    lastError: record.lastError,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
   };
 }
 
@@ -574,6 +590,36 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
     async listObservationRuns() {
       const records = await prisma.observationRun.findMany({ orderBy: { startedAt: "desc" } });
       return records.map(toObservationRunRecord);
+    },
+    async upsertAutomationHeartbeat(input) {
+      const record = await prisma.automationHeartbeat.upsert({
+        where: { id: input.id },
+        update: {
+          status: input.status,
+          heartbeatAt: input.heartbeatAt,
+          nextRunAt: input.nextRunAt,
+          intervalMs: input.intervalMs,
+          consecutiveFailureCount: input.consecutiveFailureCount,
+          lastError: input.lastError,
+          updatedAt: input.updatedAt
+        },
+        create: {
+          id: input.id,
+          status: input.status,
+          heartbeatAt: input.heartbeatAt,
+          nextRunAt: input.nextRunAt,
+          intervalMs: input.intervalMs,
+          consecutiveFailureCount: input.consecutiveFailureCount,
+          lastError: input.lastError,
+          createdAt: input.createdAt,
+          updatedAt: input.updatedAt
+        }
+      });
+      return toAutomationHeartbeatRecord(record);
+    },
+    async listAutomationHeartbeats() {
+      const records = await prisma.automationHeartbeat.findMany({ orderBy: { heartbeatAt: "desc" } });
+      return records.map(toAutomationHeartbeatRecord);
     },
     async createModelArtifact(input) {
       const record = await prisma.modelArtifact.upsert({

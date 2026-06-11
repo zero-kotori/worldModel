@@ -95,6 +95,12 @@ enum ObservationRunStatus {
   REVIEW_ONLY
 }
 
+enum AutomationHeartbeatStatus {
+  RUNNING
+  IDLE
+  ERROR
+}
+
 enum ModelArtifactKind {
   LIGHTWEIGHT
   LLM
@@ -266,6 +272,20 @@ model ObservationRun {
   queryCount        Int                  @default(0)
   querySummary      Json?
   errorMessage      String?
+}
+
+model AutomationHeartbeat {
+  id                      String                    @id
+  status                  AutomationHeartbeatStatus
+  heartbeatAt             DateTime
+  nextRunAt               DateTime?
+  intervalMs              Int
+  consecutiveFailureCount Int                       @default(0)
+  lastError               String                    @default("")
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+
+  @@index([status, heartbeatAt])
 }
 
 model ModelArtifact {

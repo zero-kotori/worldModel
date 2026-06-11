@@ -1,6 +1,17 @@
-import type { ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
+import type { AutomationHeartbeatRecord, ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
 
 type AutomationHealthTone = "idle" | "healthy" | "warning" | "failing";
+type AutomationWorkerSummary = {
+  id?: string;
+  status?: AutomationHeartbeatRecord["status"];
+  label: string;
+  tone: AutomationHealthTone;
+  latestHeartbeatAt?: Date;
+  nextRunAt?: Date;
+  intervalMs?: number;
+  consecutiveFailureCount: number;
+  lastError: string;
+};
 
 export function getLatestSourceRun(sourceId: string, runs: ObservationRunRecord[]) {
   return runs
@@ -17,10 +28,14 @@ export function sourceHealthLabel(source: ObservationSourceRecord, latestRun?: O
   return "正常";
 }
 
+function truncateErrorMessage(message: string | undefined) {
+  const trimmed = message?.trim();
+  if (!trimmed) return "";
+  return trimmed.length > 120 ? `${trimmed.slice(0, 118)}...` : trimmed;
+}
+
 export function runErrorSummary(run?: ObservationRunRecord) {
-  const message = run?.errorMessage?.trim();
-  if (!message) return "";
-  return message.length > 120 ? `${message.slice(0, 118)}...` : message;
+  return truncateErrorMessage(run?.errorMessage);
 }
 
 function sortedRuns(runs: ObservationRunRecord[]) {
@@ -31,7 +46,71 @@ function successfulRun(run: ObservationRunRecord) {
   return run.status !== "FAILED";
 }
 
-export function summarizeAutomationHealth(runs: ObservationRunRecord[]): {
+function latestHeartbeat(heartbeats: AutomationHeartbeatRecord[]) {
+  return [...heartbeats].sort((a, b) => b.heartbeatAt.getTime() - a.heartbeatAt.getTime())[0];
+}
+
+function summarizeWorker(heartbeats: AutomationHeartbeatRecord[] = []): AutomationWorkerSummary {
+  const heartbeat = latestHeartbeat(heartbeats);
+  if (!heartbeat) {
+    return {
+      id: undefined,
+      status: undefined,
+      label: "未注册",
+      tone: "idle",
+      latestHeartbeatAt: undefined,
+      nextRunAt: undefined,
+      intervalMs: undefined,
+      consecutiveFailureCount: 0,
+      lastError: ""
+    };
+  }
+
+  if (heartbeat.status === "IDLE") {
+    return {
+      id: heartbeat.id,
+      status: heartbeat.status,
+      label: "已停止",
+      tone: "idle",
+      latestHeartbeatAt: heartbeat.heartbeatAt,
+      nextRunAt: heartbeat.nextRunAt,
+      intervalMs: heartbeat.intervalMs,
+      consecutiveFailureCount: heartbeat.consecutiveFailureCount,
+      lastError: truncateErrorMessage(heartbeat.lastError)
+    };
+  }
+
+  if (heartbeat.status === "ERROR") {
+    return {
+      id: heartbeat.id,
+      status: heartbeat.status,
+      label: "等待重试",
+      tone: heartbeat.consecutiveFailureCount >= 2 ? "failing" : "warning",
+      latestHeartbeatAt: heartbeat.heartbeatAt,
+      nextRunAt: heartbeat.nextRunAt,
+      intervalMs: heartbeat.intervalMs,
+      consecutiveFailureCount: heartbeat.consecutiveFailureCount,
+      lastError: truncateErrorMessage(heartbeat.lastError)
+    };
+  }
+
+  return {
+    id: heartbeat.id,
+    status: heartbeat.status,
+    label: "运行中",
+    tone: "healthy",
+    latestHeartbeatAt: heartbeat.heartbeatAt,
+    nextRunAt: heartbeat.nextRunAt,
+    intervalMs: heartbeat.intervalMs,
+    consecutiveFailureCount: heartbeat.consecutiveFailureCount,
+    lastError: truncateErrorMessage(heartbeat.lastError)
+  };
+}
+
+export function summarizeAutomationHealth(
+  runs: ObservationRunRecord[],
+  heartbeats: AutomationHeartbeatRecord[] = []
+): {
   label: string;
   tone: AutomationHealthTone;
   consecutiveFailureCount: number;
@@ -39,9 +118,11 @@ export function summarizeAutomationHealth(runs: ObservationRunRecord[]): {
   lastSuccessAt?: Date;
   latestError: string;
   latestCounts: Pick<ObservationRunRecord, "itemCount" | "candidateCount" | "autoAppliedCount" | "reviewCount">;
+  worker: AutomationWorkerSummary;
 } {
   const orderedRuns = sortedRuns(runs);
   const latestRun = orderedRuns[0];
+  const worker = summarizeWorker(heartbeats);
 
   if (!latestRun) {
     return {
@@ -56,7 +137,8 @@ export function summarizeAutomationHealth(runs: ObservationRunRecord[]): {
         candidateCount: 0,
         autoAppliedCount: 0,
         reviewCount: 0
-      }
+      },
+      worker
     };
   }
 
@@ -87,6 +169,7 @@ export function summarizeAutomationHealth(runs: ObservationRunRecord[]): {
       candidateCount: latestRun.candidateCount,
       autoAppliedCount: latestRun.autoAppliedCount,
       reviewCount: latestRun.reviewCount
-    }
+    },
+    worker
   };
 }

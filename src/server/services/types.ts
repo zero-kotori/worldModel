@@ -21,6 +21,7 @@ export type EvidenceStatus = "ACTIVE" | "SUPERSEDED" | "REJECTED";
 export type EvidenceDirection = "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL";
 export type ObservationRunStatus = "SUCCESS" | "FAILED" | "DRY_RUN" | "REVIEW_ONLY";
 export type ModelArtifactKind = "LIGHTWEIGHT" | "LLM" | "DEEP_ADAPTER";
+export type AutomationHeartbeatStatus = "RUNNING" | "IDLE" | "ERROR";
 
 export type HypothesisRecord = {
   id: string;
@@ -150,6 +151,18 @@ export type ObservationRunRecord = {
   queryCount: number;
   querySummary: EvidenceLoopQuery[];
   errorMessage?: string;
+};
+
+export type AutomationHeartbeatRecord = {
+  id: string;
+  status: AutomationHeartbeatStatus;
+  heartbeatAt: Date;
+  nextRunAt?: Date;
+  intervalMs: number;
+  consecutiveFailureCount: number;
+  lastError: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type RunSourceOptions = {
@@ -352,6 +365,8 @@ export type WorldModelStore = {
   getSource(id: string): Promise<ObservationSourceRecord | null>;
   createObservationRun(input: ObservationRunRecord): Promise<ObservationRunRecord>;
   listObservationRuns(): Promise<ObservationRunRecord[]>;
+  upsertAutomationHeartbeat(input: AutomationHeartbeatRecord): Promise<AutomationHeartbeatRecord>;
+  listAutomationHeartbeats(): Promise<AutomationHeartbeatRecord[]>;
   createModelArtifact(input: ModelArtifactRecord): Promise<ModelArtifactRecord>;
   listModelArtifacts(): Promise<ModelArtifactRecord[]>;
 };
@@ -399,6 +414,8 @@ export type WorldModelServices = {
   };
   automation: {
     runEvidenceLoop(options?: EvidenceLoopOptions): Promise<EvidenceLoopResult>;
+    recordHeartbeat(input: Omit<AutomationHeartbeatRecord, "createdAt" | "updatedAt">): Promise<AutomationHeartbeatRecord>;
+    listHeartbeats(): Promise<AutomationHeartbeatRecord[]>;
   };
   models: {
     listArtifacts(): Promise<ModelArtifactRecord[]>;

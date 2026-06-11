@@ -1378,6 +1378,42 @@ describe("world model services", () => {
     expect(restoredBelief?.hypotheses[0].currentProbability).toBeCloseTo(0.45, 8);
   });
 
+  it("records and updates automation worker heartbeat state", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+    const startedAt = new Date("2026-06-11T04:00:00.000Z");
+    const retryAt = new Date("2026-06-11T04:15:00.000Z");
+
+    const first = await services.automation.recordHeartbeat({
+      id: "default",
+      status: "RUNNING",
+      heartbeatAt: startedAt,
+      nextRunAt: retryAt,
+      intervalMs: 900_000,
+      consecutiveFailureCount: 0,
+      lastError: ""
+    });
+    const updated = await services.automation.recordHeartbeat({
+      id: "default",
+      status: "ERROR",
+      heartbeatAt: new Date("2026-06-11T04:15:00.000Z"),
+      nextRunAt: new Date("2026-06-11T04:45:00.000Z"),
+      intervalMs: 900_000,
+      consecutiveFailureCount: 2,
+      lastError: "source endpoint unavailable"
+    });
+    const heartbeats = await services.automation.listHeartbeats();
+
+    expect(first).toMatchObject({ id: "default", status: "RUNNING", nextRunAt: retryAt });
+    expect(updated).toMatchObject({
+      id: "default",
+      status: "ERROR",
+      consecutiveFailureCount: 2,
+      lastError: "source endpoint unavailable"
+    });
+    expect(heartbeats).toHaveLength(1);
+    expect(heartbeats[0]).toEqual(updated);
+  });
+
   it("creates a graph model for beliefs, hypotheses, evidence, and update events", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const belief = await services.beliefs.createBelief({

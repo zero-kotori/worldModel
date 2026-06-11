@@ -1,5 +1,5 @@
 import { getLatestSourceRun, runErrorSummary, sourceHealthLabel, summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
-import type { ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
+import type { AutomationHeartbeatRecord, ObservationRunRecord, ObservationSourceRecord } from "@/server/services/types";
 
 function source(id: string, enabled = true): ObservationSourceRecord {
   return {
@@ -26,6 +26,17 @@ function run(input: Partial<ObservationRunRecord> & Pick<ObservationRunRecord, "
     reviewCount: 0,
     queryCount: 0,
     querySummary: [],
+    ...input
+  };
+}
+
+function heartbeat(input: Partial<AutomationHeartbeatRecord> & Pick<AutomationHeartbeatRecord, "id" | "status" | "heartbeatAt">): AutomationHeartbeatRecord {
+  return {
+    intervalMs: 900_000,
+    consecutiveFailureCount: 0,
+    lastError: "",
+    createdAt: new Date("2026-06-11T00:00:00.000Z"),
+    updatedAt: input.heartbeatAt,
     ...input
   };
 }
@@ -87,7 +98,7 @@ describe("world model sources UI", () => {
   });
 
   it("summarizes idle automation health without run records", () => {
-    expect(summarizeAutomationHealth([])).toEqual({
+    expect(summarizeAutomationHealth([], [])).toEqual({
       label: "未运行",
       tone: "idle",
       consecutiveFailureCount: 0,
@@ -99,6 +110,17 @@ describe("world model sources UI", () => {
         candidateCount: 0,
         autoAppliedCount: 0,
         reviewCount: 0
+      },
+      worker: {
+        id: undefined,
+        status: undefined,
+        label: "未注册",
+        tone: "idle",
+        latestHeartbeatAt: undefined,
+        nextRunAt: undefined,
+        intervalMs: undefined,
+        consecutiveFailureCount: 0,
+        lastError: ""
       }
     });
   });
@@ -139,6 +161,36 @@ describe("world model sources UI", () => {
         autoAppliedCount: 0,
         reviewCount: 1
       }
+    });
+  });
+
+  it("summarizes the latest automation worker heartbeat separately from run history", () => {
+    const latestHeartbeat = heartbeat({
+      id: "default",
+      status: "RUNNING",
+      heartbeatAt: new Date("2026-06-11T04:00:00.000Z"),
+      nextRunAt: new Date("2026-06-11T04:15:00.000Z"),
+      intervalMs: 900_000
+    });
+
+    const health = summarizeAutomationHealth(
+      [],
+      [
+        heartbeat({ id: "old", status: "IDLE", heartbeatAt: new Date("2026-06-11T02:00:00.000Z") }),
+        latestHeartbeat
+      ]
+    );
+
+    expect(health.worker).toEqual({
+      id: "default",
+      status: "RUNNING",
+      label: "运行中",
+      tone: "healthy",
+      latestHeartbeatAt: latestHeartbeat.heartbeatAt,
+      nextRunAt: latestHeartbeat.nextRunAt,
+      intervalMs: 900_000,
+      consecutiveFailureCount: 0,
+      lastError: ""
     });
   });
 });

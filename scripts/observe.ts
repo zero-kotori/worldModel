@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { createConfiguredWorldModelServices } from "@/server/services/configured";
 import { createPrismaWorldModelStore } from "@/server/services/prisma-store";
 import { createSourceAdapter, supportedSourceKinds, type RawObservation } from "@/server/sources/adapters";
-import type { EvidenceLoopOptions, EvidenceLoopResult, ObservationSourceKind } from "@/server/services/types";
+import type { EvidenceLoopOptions, EvidenceLoopResult, ObservationSourceKind, WorldModelServices } from "@/server/services/types";
 
 config({ path: ".env.local" });
 config();
@@ -13,6 +13,7 @@ config();
 const DEFAULT_REPEAT_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_FAILURE_BACKOFF_MULTIPLIER = 2;
 const DEFAULT_MAX_REPEAT_INTERVAL_MS = 60 * 60 * 1000;
+const DEFAULT_WORKER_ID = "default";
 
 function arg(name: string, argv = process.argv) {
   const index = argv.indexOf(name);
@@ -80,6 +81,7 @@ export type ObserveCliOptions = {
   intervalMs: number;
   failureBackoffMultiplier: number;
   maxIntervalMs: number;
+  workerId: string;
   iterations?: number;
   sourceId?: string;
   runAllSources: boolean;
@@ -110,6 +112,7 @@ export function parseObserveArgs(argv = process.argv): ObserveCliOptions {
     forceAutoApply,
     repeat,
     intervalMs,
+    workerId: arg("--worker-id", argv) ?? DEFAULT_WORKER_ID,
     failureBackoffMultiplier: failureBackoffMultiplierArg(argv),
     maxIntervalMs: maxIntervalMsArg(intervalMs, argv),
     iterations: positiveIntegerArg("--iterations", argv),
@@ -141,6 +144,14 @@ export type RepeatedTaskOptions<T = unknown> = {
   continueOnError?: boolean;
   isFailure?: (result: T) => boolean;
   onError?: (error: unknown, iteration: number) => void | Promise<void>;
+  onIterationComplete?: (state: {
+    iteration: number;
+    result?: T;
+    error?: unknown;
+    failed: boolean;
+    consecutiveFailures: number;
+    nextDelayMs?: number;
+  }) => void | Promise<void>;
   wait?: (ms: number) => Promise<void>;
 };
 
@@ -177,25 +188,40 @@ export async function runRepeatedTask<T>(
   let consecutiveFailures = 0;
 
   while (options.iterations === undefined || iteration <= options.iterations) {
+    let result: T | undefined;
+    let errorForState: unknown;
+    let failed = false;
     try {
-      const result = await task(iteration);
-      const failed = options.isFailure?.(result) ?? false;
+      result = await task(iteration);
+      failed = options.isFailure?.(result) ?? false;
       consecutiveFailures = failed ? consecutiveFailures + 1 : 0;
       if (collectResults) results.push(result);
     } catch (error) {
       if (!options.continueOnError) throw error;
+      errorForState = error;
+      failed = true;
       consecutiveFailures += 1;
       await options.onError?.(error, iteration);
     }
-    if (!repeat || (options.iterations !== undefined && iteration >= options.iterations)) break;
-    await wait(
-      delayForFailures({
-        consecutiveFailures,
-        intervalMs,
-        failureBackoffMultiplier,
-        maxIntervalMs
-      })
-    );
+    const isLastIteration = !repeat || (options.iterations !== undefined && iteration >= options.iterations);
+    const nextDelayMs = isLastIteration
+      ? undefined
+      : delayForFailures({
+          consecutiveFailures,
+          intervalMs,
+          failureBackoffMultiplier,
+          maxIntervalMs
+        });
+    await options.onIterationComplete?.({
+      iteration,
+      result,
+      error: errorForState,
+      failed,
+      consecutiveFailures,
+      nextDelayMs
+    });
+    if (isLastIteration) break;
+    await wait(nextDelayMs ?? intervalMs);
     iteration += 1;
   }
 
@@ -208,6 +234,17 @@ function loopResultHasFailures(result: EvidenceLoopResult) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function recordLoopHeartbeat(
+  automation: WorldModelServices["automation"],
+  input: Parameters<WorldModelServices["automation"]["recordHeartbeat"]>[0]
+) {
+  try {
+    await automation.recordHeartbeat(input);
+  } catch (error) {
+    console.error(JSON.stringify({ workerId: input.id, heartbeatError: errorMessage(error) }, null, 2));
+  }
 }
 
 async function main() {
@@ -223,6 +260,15 @@ async function main() {
           console.log(JSON.stringify(result, null, 2));
           return;
         }
+        await recordLoopHeartbeat(services.automation, {
+          id: options.workerId,
+          status: "RUNNING",
+          heartbeatAt: new Date(),
+          nextRunAt: undefined,
+          intervalMs: options.intervalMs,
+          consecutiveFailureCount: 0,
+          lastError: ""
+        });
         await runRepeatedTask(
           async (iteration) => {
             const result = await services.automation.runEvidenceLoop(options.loopOptions);
@@ -240,9 +286,31 @@ async function main() {
             isFailure: (result) => loopResultHasFailures(result),
             onError: async (error, iteration) => {
               console.error(JSON.stringify({ iteration, error: errorMessage(error) }, null, 2));
+            },
+            onIterationComplete: async (state) => {
+              await recordLoopHeartbeat(services.automation, {
+                id: options.workerId,
+                status: state.error || state.failed ? "ERROR" : "RUNNING",
+                heartbeatAt: new Date(),
+                nextRunAt: state.nextDelayMs === undefined ? undefined : new Date(Date.now() + state.nextDelayMs),
+                intervalMs: options.intervalMs,
+                consecutiveFailureCount: state.consecutiveFailures,
+                lastError: state.error ? errorMessage(state.error) : state.failed ? "One or more source runs failed." : ""
+              });
             }
           }
         );
+        if (options.iterations !== undefined) {
+          await recordLoopHeartbeat(services.automation, {
+            id: options.workerId,
+            status: "IDLE",
+            heartbeatAt: new Date(),
+            nextRunAt: undefined,
+            intervalMs: options.intervalMs,
+            consecutiveFailureCount: 0,
+            lastError: ""
+          });
+        }
         return;
       }
       const configuredSources = await services.sources.listSources();

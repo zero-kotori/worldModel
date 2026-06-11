@@ -52,6 +52,8 @@ describe("observe CLI options", () => {
       "observe.ts",
       "--loop",
       "--repeat",
+      "--worker-id",
+      "daily-loop",
       "--interval-seconds",
       "120",
       "--failure-backoff-multiplier",
@@ -63,6 +65,7 @@ describe("observe CLI options", () => {
     ]);
 
     expect(options.repeat).toBe(true);
+    expect(options.workerId).toBe("daily-loop");
     expect(options.intervalMs).toBe(120_000);
     expect(options.failureBackoffMultiplier).toBe(3);
     expect(options.maxIntervalMs).toBe(600_000);
@@ -166,5 +169,43 @@ describe("observe CLI options", () => {
     expect(errors).toEqual(["temporary failure"]);
     expect(waits).toEqual([2000]);
     expect(results).toEqual([{ ok: true }]);
+  });
+
+  it("reports repeat state with the next delay before waiting", async () => {
+    const waits: number[] = [];
+    const states: Array<{
+      iteration: number;
+      failed: boolean;
+      consecutiveFailures: number;
+      nextDelayMs?: number;
+    }> = [];
+
+    await runRepeatedTask(
+      async (iteration) => ({ failureCount: iteration === 1 ? 1 : 0 }),
+      {
+        repeat: true,
+        iterations: 2,
+        intervalMs: 1000,
+        failureBackoffMultiplier: 2,
+        isFailure: (result) => result.failureCount > 0,
+        onIterationComplete: async (state) => {
+          states.push({
+            iteration: state.iteration,
+            failed: state.failed,
+            consecutiveFailures: state.consecutiveFailures,
+            nextDelayMs: state.nextDelayMs
+          });
+        },
+        wait: async (ms) => {
+          waits.push(ms);
+        }
+      }
+    );
+
+    expect(states).toEqual([
+      { iteration: 1, failed: true, consecutiveFailures: 1, nextDelayMs: 2000 },
+      { iteration: 2, failed: false, consecutiveFailures: 0, nextDelayMs: undefined }
+    ]);
+    expect(waits).toEqual([2000]);
   });
 });

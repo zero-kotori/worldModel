@@ -41,7 +41,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
   }));
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
   const sourcePresets = listSourcePresets(data.sources);
-  const automationHealth = summarizeAutomationHealth(data.runs);
+  const automationHealth = summarizeAutomationHealth(data.runs, data.heartbeats);
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
@@ -50,10 +50,20 @@ export default async function SourcesPage({ searchParams }: PageProps) {
       <StatusNotice message={firstParam(params.error)} tone="error" />
       <PageSection title="自动闭环状态">
         <div className="rounded-md border border-line bg-white p-4">
-          <div className="grid gap-4 text-sm lg:grid-cols-6">
+          <div className="grid gap-4 text-sm lg:grid-cols-8">
             <div>
               <div className="text-xs text-ink/55">状态</div>
               <div className={`mt-1 font-semibold ${healthToneClass(automationHealth.tone)}`}>{automationHealth.label}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">守护进程</div>
+              <div className={`mt-1 font-semibold ${healthToneClass(automationHealth.worker.tone)}`}>
+                {automationHealth.worker.label}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-ink/55">下次运行</div>
+              <div className="mt-1 text-ink">{automationHealth.worker.nextRunAt?.toLocaleString("zh-CN") ?? ""}</div>
             </div>
             <div>
               <div className="text-xs text-ink/55">最近运行</div>
@@ -81,6 +91,9 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           </div>
           {automationHealth.latestError ? (
             <div className="mt-3 border-t border-line pt-3 text-xs text-berry">{automationHealth.latestError}</div>
+          ) : null}
+          {automationHealth.worker.lastError ? (
+            <div className="mt-3 border-t border-line pt-3 text-xs text-berry">{automationHealth.worker.lastError}</div>
           ) : null}
         </div>
       </PageSection>

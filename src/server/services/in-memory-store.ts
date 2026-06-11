@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {
+  AutomationHeartbeatRecord,
   BayesianUpdateEventRecord,
   BeliefRecord,
   EvidenceRecord,
@@ -53,6 +54,16 @@ function cloneEvidence(record: EvidenceRecord): EvidenceRecord {
   };
 }
 
+function cloneAutomationHeartbeat(record: AutomationHeartbeatRecord): AutomationHeartbeatRecord {
+  return {
+    ...record,
+    heartbeatAt: new Date(record.heartbeatAt),
+    nextRunAt: cloneDate(record.nextRunAt),
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt)
+  };
+}
+
 export function createInMemoryWorldModelStore(): WorldModelStore {
   const beliefs: BeliefRecord[] = [];
   const observations: ObservationRecord[] = [];
@@ -61,6 +72,7 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
   const updateEvents: BayesianUpdateEventRecord[] = [];
   const sources: ObservationSourceRecord[] = [];
   const observationRuns: ObservationRunRecord[] = [];
+  const automationHeartbeats: AutomationHeartbeatRecord[] = [];
   const modelArtifacts: ModelArtifactRecord[] = [];
 
   return {
@@ -236,6 +248,21 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
         finishedAt: cloneDate(run.finishedAt),
         querySummary: run.querySummary.map((query) => ({ ...query }))
       }));
+    },
+    async upsertAutomationHeartbeat(input) {
+      const existing = automationHeartbeats.find((item) => item.id === input.id);
+      const record = cloneAutomationHeartbeat(input);
+      if (existing) {
+        Object.assign(existing, record, { createdAt: existing.createdAt });
+        return cloneAutomationHeartbeat(existing);
+      }
+      automationHeartbeats.push(record);
+      return cloneAutomationHeartbeat(record);
+    },
+    async listAutomationHeartbeats() {
+      return automationHeartbeats
+        .map(cloneAutomationHeartbeat)
+        .sort((a, b) => b.heartbeatAt.getTime() - a.heartbeatAt.getTime());
     },
     async createModelArtifact(input) {
       const existing = modelArtifacts.find((item) => item.name === input.name && item.version === input.version);

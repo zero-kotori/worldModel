@@ -18,6 +18,7 @@ export async function loadWorldModelData() {
       evidence: [],
       sources: [],
       runs: [],
+      heartbeats: [],
       models: [],
       updates: [],
       error: "数据库未配置或不可用：请设置 WORLDMODEL_DATABASE_URL 并运行 Prisma 迁移。"
@@ -26,16 +27,17 @@ export async function loadWorldModelData() {
 
   try {
     const services = getWorldModelServices();
-    const [beliefs, observations, evidence, sources, runs, models, updates] = await Promise.all([
+    const [beliefs, observations, evidence, sources, runs, heartbeats, models, updates] = await Promise.all([
       services.beliefs.listBeliefs(),
       services.observations.listObservations(),
       services.evidence.listEvidence(),
       services.sources.listSources(),
       services.sources.listRuns(),
+      services.automation.listHeartbeats(),
       services.models.listArtifacts(),
       services.updates.listEvents()
     ]);
-    return { beliefs, observations, evidence, sources, runs, models, updates, error: null };
+    return { beliefs, observations, evidence, sources, runs, heartbeats, models, updates, error: null };
   } catch (error) {
     return {
       beliefs: [],
@@ -43,6 +45,7 @@ export async function loadWorldModelData() {
       evidence: [],
       sources: [],
       runs: [],
+      heartbeats: [],
       models: [],
       updates: [],
       error: formatDataError(error)

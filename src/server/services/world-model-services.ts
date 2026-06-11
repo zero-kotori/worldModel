@@ -16,6 +16,7 @@ import type { LikelihoodEstimator } from "@/server/models/estimators";
 import { createRecordId } from "@/server/services/in-memory-store";
 import { createSourceAdapter, type AdapterDependencies } from "@/server/sources/adapters";
 import type {
+  AutomationHeartbeatRecord,
   BayesianUpdateEventRecord,
   ConfirmAndApplyEvidenceResult,
   ConfirmEvidenceInput,
@@ -192,6 +193,16 @@ const artifactSchema = z.object({
   path: z.string().trim().min(1),
   metrics: z.record(z.string(), z.unknown()),
   enabled: z.boolean()
+});
+
+const automationHeartbeatSchema = z.object({
+  id: z.string().trim().min(1),
+  status: z.enum(["RUNNING", "IDLE", "ERROR"]),
+  heartbeatAt: z.date(),
+  nextRunAt: z.date().optional(),
+  intervalMs: z.number().int().nonnegative(),
+  consecutiveFailureCount: z.number().int().nonnegative(),
+  lastError: z.string().optional()
 });
 
 function parseBeliefInput(input: CreateBeliefInput) {
@@ -1116,6 +1127,26 @@ export function createWorldModelServices(
     };
   }
 
+  async function recordAutomationHeartbeat(
+    input: Omit<AutomationHeartbeatRecord, "createdAt" | "updatedAt">
+  ): Promise<AutomationHeartbeatRecord> {
+    const parsed = automationHeartbeatSchema.parse(input);
+    const timestamp = now();
+    const existing = (await store.listAutomationHeartbeats()).find((heartbeat) => heartbeat.id === parsed.id);
+
+    return store.upsertAutomationHeartbeat({
+      id: parsed.id,
+      status: parsed.status,
+      heartbeatAt: parsed.heartbeatAt,
+      nextRunAt: parsed.nextRunAt,
+      intervalMs: parsed.intervalMs,
+      consecutiveFailureCount: parsed.consecutiveFailureCount,
+      lastError: parsed.lastError?.trim() ?? "",
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp
+    });
+  }
+
   return {
     beliefs: {
       async createBelief(input) {
@@ -1288,7 +1319,11 @@ export function createWorldModelServices(
       }
     },
     automation: {
-      runEvidenceLoop
+      runEvidenceLoop,
+      recordHeartbeat: recordAutomationHeartbeat,
+      listHeartbeats() {
+        return store.listAutomationHeartbeats();
+      }
     },
     models: {
       listArtifacts() {
