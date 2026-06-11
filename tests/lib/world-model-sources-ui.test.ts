@@ -122,7 +122,8 @@ describe("world model sources UI", () => {
         consecutiveFailureCount: 0,
         lastError: ""
       },
-      diagnostics: []
+      diagnostics: [],
+      nextActions: []
     });
   });
 
@@ -291,6 +292,10 @@ describe("world model sources UI", () => {
       title: "缺少采集来源",
       detail: "添加或补齐推荐来源后，闭环才能自动搜集观察。"
     });
+    expect(noSourceHealth.nextActions).toContainEqual({
+      label: "添加推荐来源",
+      href: "/admin/world-model/sources#recommended-sources"
+    });
 
     const fetchFailedHealth = summarizeAutomationHealth([
       run({
@@ -323,6 +328,10 @@ describe("world model sources UI", () => {
       level: "info",
       title: "候选等待确认",
       detail: "关闭仅生成待审或降低自动应用阈值后，可信候选才能自动更新信念。"
+    });
+    expect(reviewOnlyHealth.nextActions).toContainEqual({
+      label: "处理待审候选",
+      href: "/admin/world-model/observations"
     });
   });
 });

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Play, Plus } from "lucide-react";
 import {
   createSourcePresetAction,
@@ -142,9 +143,23 @@ export default async function SourcesPage({ searchParams }: PageProps) {
               </div>
             </div>
           ) : null}
+          {automationHealth.nextActions.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+              {automationHealth.nextActions.map((action) => (
+                <Link
+                  key={`${action.label}-${action.href}`}
+                  href={action.href}
+                  className="inline-flex min-h-8 items-center rounded-md border border-moss px-3 text-xs font-semibold text-moss hover:bg-moss/10"
+                >
+                  {action.label}
+                </Link>
+              ))}
+            </div>
+          ) : null}
         </div>
       </PageSection>
-      <PageSection title="推荐来源">
+      <div id="recommended-sources">
+        <PageSection title="推荐来源">
         <div className="grid gap-3 lg:grid-cols-2">
           {sourcePresets.map((preset) => (
             <div key={preset.id} className="rounded-md border border-line bg-white p-4">
@@ -171,7 +186,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             </div>
           ))}
         </div>
-      </PageSection>
+        </PageSection>
+      </div>
       <PageSection title="来源配置">
         <form action={createSourceAction} className="grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-4">
           <Field label="名称" name="name" required />
@@ -249,7 +265,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             <Play size={16} /> 运行闭环
           </button>
         </form>
-        <div className="mt-3 grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-[1fr_auto]">
+        <div id="automation-worker" className="mt-3 grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-[1fr_auto]">
           <form action={startEvidenceLoopWorkerAction} className="grid gap-3 lg:grid-cols-5">
             <Field label="Worker" name="workerId" defaultValue={workerConfig.id} required />
             <Field label="间隔秒" name="intervalSeconds" type="number" min="60" defaultValue={Math.floor(workerConfig.intervalMs / 1000)} />
@@ -308,7 +324,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
           </form>
         </div>
       </PageSection>
-      <PageSection title="来源列表">
+      <div id="source-list">
+        <PageSection title="来源列表">
         {data.sources.length === 0 ? (
           <EmptyState label="暂无来源" />
         ) : (
@@ -348,7 +365,8 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             </table>
           </div>
         )}
-      </PageSection>
+        </PageSection>
+      </div>
       <PageSection title="运行记录">
         {data.runs.length === 0 ? (
           <EmptyState label="暂无运行记录" />

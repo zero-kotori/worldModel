@@ -6,6 +6,10 @@ type AutomationDiagnostic = {
   title: string;
   detail: string;
 };
+type AutomationNextAction = {
+  label: string;
+  href: string;
+};
 type AutomationWorkerRuntime = {
   workerId: string;
   running: boolean;
@@ -254,6 +258,49 @@ function automationDiagnostics(input: {
   return diagnostics;
 }
 
+function addNextAction(actions: AutomationNextAction[], action: AutomationNextAction) {
+  if (!actions.some((item) => item.href === action.href && item.label === action.label)) {
+    actions.push(action);
+  }
+}
+
+function automationNextActions(diagnostics: AutomationDiagnostic[]): AutomationNextAction[] {
+  const actions: AutomationNextAction[] = [];
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.title === "缺少采集来源" || diagnostic.title === "没有启用来源") {
+      addNextAction(actions, {
+        label: "添加推荐来源",
+        href: "/admin/world-model/sources#recommended-sources"
+      });
+    }
+    if (diagnostic.title === "来源抓取失败") {
+      addNextAction(actions, {
+        label: "检查来源配置",
+        href: "/admin/world-model/sources#source-list"
+      });
+    }
+    if (diagnostic.title === "候选等待确认") {
+      addNextAction(actions, {
+        label: "处理待审候选",
+        href: "/admin/world-model/observations"
+      });
+    }
+    if (diagnostic.title === "未识别候选证据") {
+      addNextAction(actions, {
+        label: "调整信念假设",
+        href: "/admin/world-model/beliefs"
+      });
+    }
+    if (diagnostic.title === "守护进程心跳过期") {
+      addNextAction(actions, {
+        label: "检查守护进程",
+        href: "/admin/world-model/sources#automation-worker"
+      });
+    }
+  }
+  return actions;
+}
+
 export function summarizeAutomationHealth(
   runs: ObservationRunRecord[],
   heartbeats: AutomationHeartbeatRecord[] = [],
@@ -268,6 +315,7 @@ export function summarizeAutomationHealth(
   latestCounts: Pick<ObservationRunRecord, "itemCount" | "candidateCount" | "autoAppliedCount" | "reviewCount">;
   worker: AutomationWorkerSummary;
   diagnostics: AutomationDiagnostic[];
+  nextActions: AutomationNextAction[];
 } {
   const { referenceTime, workerRuntime, sourceCount, enabledSourceCount } = normalizeHealthOptions(options);
   const orderedRuns = sortedRuns(runs);
@@ -281,6 +329,7 @@ export function summarizeAutomationHealth(
     latestFailedRun,
     worker
   });
+  const nextActions = automationNextActions(diagnostics);
 
   if (!latestRun) {
     return {
@@ -297,7 +346,8 @@ export function summarizeAutomationHealth(
         reviewCount: 0
       },
       worker,
-      diagnostics
+      diagnostics,
+      nextActions
     };
   }
 
@@ -329,6 +379,7 @@ export function summarizeAutomationHealth(
       reviewCount: latestRun.reviewCount
     },
     worker,
-    diagnostics
+    diagnostics,
+    nextActions
   };
 }
