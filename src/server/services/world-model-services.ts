@@ -45,6 +45,7 @@ import type {
 } from "@/server/services/types";
 
 const probabilitySchema = z.number().finite().min(0).max(1);
+const DEFAULT_CANDIDATE_THRESHOLD = 0.25;
 
 const createBeliefSchema = z.object({
   title: z.string().trim().min(1, "Belief title is required"),
@@ -298,6 +299,12 @@ function overlapScore(source: string, target: string) {
     if (sourceTokens.has(token)) overlap += 1;
   }
   return overlap / targetTokens.size;
+}
+
+function normalizedThreshold(value: number | undefined, fallback: number) {
+  const threshold = value ?? fallback;
+  if (!Number.isFinite(threshold)) return fallback;
+  return Math.min(1, Math.max(0, threshold));
 }
 
 function normalizedTextKey(value: string) {
@@ -952,7 +959,11 @@ export function createWorldModelServices(
       let candidateCount = 0;
       let autoAppliedCount = 0;
       let reviewCount = 0;
-      const threshold = runOptions.autoConfirmThreshold ?? source.autoConfirmThreshold;
+      const autoApplyThreshold = normalizedThreshold(runOptions.autoConfirmThreshold, source.autoConfirmThreshold);
+      const candidateThreshold = normalizedThreshold(
+        runOptions.candidateThreshold,
+        Math.min(autoApplyThreshold, DEFAULT_CANDIDATE_THRESHOLD)
+      );
       const autoConfirm = runOptions.forceAutoApply || source.autoConfirm;
 
       for (const rawObservation of rawObservations) {
@@ -972,7 +983,7 @@ export function createWorldModelServices(
           continue;
         }
 
-        const links = await recommendedEvidenceLinks(observation, threshold);
+        const links = await recommendedEvidenceLinks(observation, candidateThreshold);
         if (links.length === 0) {
           await store.updateObservation(observation.id, { status: "UNKNOWN" });
           reviewCount += 1;
@@ -980,7 +991,7 @@ export function createWorldModelServices(
         }
 
         candidateCount += 1;
-        if (runOptions.reviewOnly || !autoConfirm || !canAutoApplyLinks(links, threshold)) {
+        if (runOptions.reviewOnly || !autoConfirm || !canAutoApplyLinks(links, autoApplyThreshold)) {
           await store.updateObservation(observation.id, {
             metadata: {
               ...observation.metadata,
@@ -1052,6 +1063,7 @@ export function createWorldModelServices(
       runs.push(
         await runSource(source.id, {
           reviewOnly: loopOptions.reviewOnly,
+          candidateThreshold: loopOptions.candidateThreshold,
           autoConfirmThreshold: loopOptions.autoConfirmThreshold,
           maxObservations: loopOptions.maxObservations,
           forceAutoApply: loopOptions.forceAutoApply,

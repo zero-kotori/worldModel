@@ -130,6 +130,7 @@ export default async function SourcesPage({ searchParams }: PageProps) {
       <PageSection title="自动证据闭环">
         <form action={runEvidenceLoopAction} className="grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-4">
           <Field label="单次最大观察" name="maxObservations" type="number" min="1" defaultValue="20" />
+          <Field label="候选识别阈值" name="candidateThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.25" />
           <Field label="自动应用阈值" name="autoConfirmThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.85" />
           <label className="flex items-center gap-2 text-sm text-ink/70">
             <input name="reviewOnly" type="checkbox" defaultChecked /> 仅生成待审

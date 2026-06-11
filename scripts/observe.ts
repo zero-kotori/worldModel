@@ -82,6 +82,7 @@ export function parseObserveArgs(argv = process.argv): ObserveCliOptions {
       reviewOnly,
       sourceIds: sourceId ? [sourceId] : undefined,
       maxObservations: numberArg("--max-observations", argv),
+      candidateThreshold: numberArg("--candidate-threshold", argv),
       autoConfirmThreshold: numberArg("--threshold", argv),
       bootstrapDefaultSources,
       forceAutoApply
@@ -109,7 +110,12 @@ async function main() {
       if (options.reviewOnly) {
         const runs = [];
         for (const source of sources.filter((item) => item.enabled)) {
-          const run = await services.sources.runSource(source.id, { reviewOnly: true });
+          const run = await services.sources.runSource(source.id, {
+            reviewOnly: true,
+            candidateThreshold: options.loopOptions.candidateThreshold,
+            autoConfirmThreshold: options.loopOptions.autoConfirmThreshold,
+            maxObservations: options.loopOptions.maxObservations
+          });
           runs.push({ ...run, source: source.name });
         }
         console.log(JSON.stringify({ mode: "review-only", runs }, null, 2));
@@ -119,6 +125,7 @@ async function main() {
       for (const source of sources) {
         runs.push(
           await services.sources.runSource(source.id, {
+            candidateThreshold: options.loopOptions.candidateThreshold,
             autoConfirmThreshold: options.loopOptions.autoConfirmThreshold,
             forceAutoApply: options.forceAutoApply,
             maxObservations: options.loopOptions.maxObservations

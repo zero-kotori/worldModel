@@ -17,6 +17,13 @@ function number(formData: FormData, key: string, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function optionalNumber(formData: FormData, key: string) {
+  const value = text(formData, key);
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function bool(formData: FormData, key: string) {
   return formData.get(key) === "on" || formData.get(key) === "true";
 }
@@ -325,8 +332,9 @@ export async function runEvidenceLoopAction(formData: FormData) {
     const services = getWorldModelServices();
     await services.automation.runEvidenceLoop({
       reviewOnly: bool(formData, "reviewOnly"),
-      maxObservations: number(formData, "maxObservations") || undefined,
-      autoConfirmThreshold: number(formData, "autoConfirmThreshold") || undefined,
+      maxObservations: optionalNumber(formData, "maxObservations"),
+      candidateThreshold: optionalNumber(formData, "candidateThreshold"),
+      autoConfirmThreshold: optionalNumber(formData, "autoConfirmThreshold"),
       bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
       forceAutoApply: bool(formData, "forceAutoApply")
     });

@@ -358,6 +358,57 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.35);
   });
 
+  it("keeps moderate evidence candidates in review when auto-apply requires a higher threshold", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>AI agents accelerate pilot workflows</title></head><body>AI agents accelerate pilot workflows in a limited engineering trial.</body></html>"
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams through autonomous code review deployment planning",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "enterprise rollout"
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Agent candidate page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/agent-candidate",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.95
+    });
+
+    const run = await services.sources.runSource(source.id, {
+      candidateThreshold: 0.2,
+      autoConfirmThreshold: 0.95
+    });
+    const observations = await services.observations.listObservations();
+    const evidence = await services.evidence.listEvidence();
+
+    expect(run.candidateCount).toBe(1);
+    expect(run.autoAppliedCount).toBe(0);
+    expect(run.reviewCount).toBe(1);
+    expect(evidence).toHaveLength(0);
+    expect(observations[0].status).toBe("PENDING");
+    expect(observations[0].metadata).toMatchObject({
+      reviewReason: "QUALITY_THRESHOLD",
+      recommendedLinks: [expect.objectContaining({ relevance: expect.any(Number) })]
+    });
+  });
+
   it("runs a source in review-only mode without changing probabilities", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {

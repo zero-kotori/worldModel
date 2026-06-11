@@ -31,6 +31,8 @@ describe("observe CLI options", () => {
       "--force-auto-apply",
       "--max-observations",
       "3",
+      "--candidate-threshold",
+      "0.25",
       "--threshold",
       "0.75"
     ]);
@@ -39,6 +41,7 @@ describe("observe CLI options", () => {
       reviewOnly: true,
       forceAutoApply: true,
       maxObservations: 3,
+      candidateThreshold: 0.25,
       autoConfirmThreshold: 0.75
     });
   });
