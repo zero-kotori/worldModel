@@ -49,6 +49,7 @@ import type {
 const probabilitySchema = z.number().finite().min(0).max(1);
 const DEFAULT_CANDIDATE_THRESHOLD = 0.25;
 const LLM_FALLBACK_CANDIDATE_LIMIT = 5;
+const SOURCE_FAILURE_SUPPRESSION_THRESHOLD = 3;
 
 const createBeliefSchema = z.object({
   title: z.string().trim().min(1, "Belief title is required"),
@@ -1157,16 +1158,41 @@ export function createWorldModelServices(
     }
   }
 
+  async function hasRecentSourceFailureStreak(sourceId: string) {
+    const runs = (await store.listObservationRuns())
+      .filter((run) => run.sourceId === sourceId)
+      .sort((left, right) => right.startedAt.getTime() - left.startedAt.getTime());
+    let failureCount = 0;
+
+    for (const run of runs) {
+      if (run.status !== "FAILED") break;
+      failureCount += 1;
+      if (failureCount >= SOURCE_FAILURE_SUPPRESSION_THRESHOLD) return true;
+    }
+
+    return false;
+  }
+
   async function runEvidenceLoop(loopOptions: EvidenceLoopOptions = {}) {
     const queries = await generateEvidenceLoopQueries(loopOptions);
     const sourceIds = new Set(loopOptions.sourceIds?.filter(Boolean));
     if (loopOptions.bootstrapDefaultSources && sourceIds.size === 0) {
       await bootstrapDefaultSources();
     }
-    const sources = (await store.listSources()).filter((source) => {
+    const eligibleSources = (await store.listSources()).filter((source) => {
       if (!source.enabled || source.kind === "MANUAL") return false;
       return sourceIds.size === 0 || sourceIds.has(source.id);
     });
+    let sources = eligibleSources;
+    if (sourceIds.size === 0) {
+      const stableSources = [];
+      for (const source of eligibleSources) {
+        if (!(await hasRecentSourceFailureStreak(source.id))) {
+          stableSources.push(source);
+        }
+      }
+      sources = stableSources;
+    }
     const runs = [];
 
     for (const source of sources) {

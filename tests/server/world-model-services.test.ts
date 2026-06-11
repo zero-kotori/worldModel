@@ -727,6 +727,86 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("skips repeatedly failing sources during automatic evidence loops while preserving explicit runs", async () => {
+    let failingFetchCount = 0;
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async (url) => {
+          if (url.includes("flaky-source")) {
+            failingFetchCount += 1;
+            throw new Error("Source endpoint unavailable");
+          }
+          return "<html><head><title>AI agents accelerate engineering teams</title></head><body>AI agents accelerate engineering teams by handling routine implementation work.</body></html>";
+        }
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "Track agent adoption.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.35,
+          stance: "SUPPORTS",
+          notes: "enterprise rollout"
+        }
+      ]
+    });
+    const flakySource = await services.sources.createSource({
+      name: "Flaky source",
+      kind: "WEB_PAGE",
+      url: "https://example.com/flaky-source",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+    await services.sources.createSource({
+      name: "Good source",
+      kind: "WEB_PAGE",
+      url: "https://example.com/good-source",
+      adapter: "web_page",
+      credentialRef: undefined,
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+
+    await services.sources.runSource(flakySource.id, { reviewOnly: true });
+    await services.sources.runSource(flakySource.id, { reviewOnly: true });
+    await services.sources.runSource(flakySource.id, { reviewOnly: true });
+    failingFetchCount = 0;
+
+    const loop = await services.automation.runEvidenceLoop({
+      reviewOnly: true,
+      maxObservations: 1,
+      autoConfirmThreshold: 0.2
+    });
+
+    expect(failingFetchCount).toBe(0);
+    expect(loop.sourceRunCount).toBe(1);
+    expect(loop.failureCount).toBe(0);
+    expect(loop.candidateCount).toBe(1);
+    expect(loop.runs.every((run) => run.sourceId !== flakySource.id)).toBe(true);
+
+    const explicitLoop = await services.automation.runEvidenceLoop({
+      sourceIds: [flakySource.id],
+      reviewOnly: true,
+      maxObservations: 1,
+      autoConfirmThreshold: 0.2
+    });
+
+    expect(failingFetchCount).toBe(1);
+    expect(explicitLoop.sourceRunCount).toBe(1);
+    expect(explicitLoop.failureCount).toBe(1);
+    expect(explicitLoop.runs[0]?.sourceId).toBe(flakySource.id);
+  });
+
   it("moves unmatched source observations into the unknown evidence queue", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {
