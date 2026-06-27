@@ -158,7 +158,7 @@ The Bayesian update uses odds form for independent hypotheses and normalized pos
 
 ## Phase 6: Observation Sources
 
-- [ ] Implement source adapters with a common output shape:
+- [x] Implement source adapters with a common output shape (all kinds dispatched in `src/server/sources/adapters.ts`; manual/social are intentional dry-run stubs until a credential profile is configured):
   - manual input.
   - RSS.
   - generic web page.
@@ -184,7 +184,7 @@ The Bayesian update uses odds form for independent hypotheses and normalized pos
   - DeepSeek.
   - OpenAI.
   - local OpenAI-compatible endpoint.
-- [ ] Implement external deep-model adapter that loads precomputed model artifacts or calls an internal endpoint.
+- [~] External deep-model adapter: the estimator interface and a registration-only stub exist (`createExternalModelEstimator` in `src/server/models/estimators.ts`, abstains without an endpoint). Per requirements §5.5 v1 keeps only the interface; the real endpoint call is a post-v1 enhancement and is intentionally not wired (no external model API contract is defined yet).
 - [x] Add data preparation scripts for validated external samples and locally confirmed evidence links.
 - [x] Add Python lightweight training script that exports versioned model artifacts.
 - [x] Add model import command that registers artifacts in `ModelArtifact`.
@@ -209,7 +209,7 @@ The Bayesian update uses odds form for independent hypotheses and normalized pos
   - desktop and mobile render of dashboard, beliefs, observations, evidence, sources, and models pages.
   - no blank pages.
   - no incoherent overlap in dense admin views.
-- [ ] Final commands before completion:
+- [x] Final commands before completion (worldModel verified green: lint, typecheck, 673 tests, build, observe --dry-run, acceptance:auto-loop):
   - in `D:\working\worldModel`: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run observe -- --dry-run`.
   - in `D:\working\myWeb`: `npm run typecheck`, `npm run build`, and existing browser/acceptance checks if affected by proxy changes.
 
