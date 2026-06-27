@@ -1,0 +1,2 @@
+ALTER TABLE "ObservationRun"
+  ADD COLUMN "lowImpactCount" INTEGER NOT NULL DEFAULT 0;

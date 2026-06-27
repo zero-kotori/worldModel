@@ -9,7 +9,7 @@ export async function POST(request: Request, context: RouteContext) {
     const { id } = await context.params;
     const body = await readJson<Omit<ConfirmEvidenceInput, "observationId">>(request);
     const services = getWorldModelServices();
-    return jsonOk(await services.evidence.confirmObservation({ ...body, observationId: id }), { status: 201 });
+    return jsonOk(await services.evidence.confirmAndApplyObservation({ ...body, observationId: id }), { status: 201 });
   } catch (error) {
     return jsonError(error);
   }

@@ -1,11 +1,14 @@
 import type { BeliefCategory } from "@/server/services/types";
 import type { EstimatorOutput } from "@/domain/likelihood";
+import { normalizeLlmConfig } from "@/lib/world-model-llm-config";
 
 export type EstimatorInput = {
   evidenceText: string;
   hypothesis: string;
   category: BeliefCategory;
   sourceCredibility: number;
+  evidencePublishedAt?: Date | string;
+  evidenceObservedAt?: Date | string;
   context?: string;
 };
 
@@ -97,7 +100,7 @@ export function createLlmEstimator(config: {
               {
                 role: "system",
                 content:
-                  "You score how an evidence item changes one hypothesis. Return only JSON with direction, relevance, likelihoodRatio, confidence, and rationale."
+                  "You score how an evidence item changes one hypothesis. Use only the supplied evidence and context, not outside knowledge. Evaluate every material constraint in the hypothesis. Return only JSON with direction, relevance, likelihoodRatio, confidence, reviewRequired, and rationale."
               },
               {
                 role: "user",
@@ -127,6 +130,7 @@ export function createLlmEstimator(config: {
           confidence: parsed.confidence,
           weight: 3,
           rationale: parsed.rationale,
+          reviewRequired: parsed.reviewRequired,
           modelVersion: `${config.provider}:${body.model ?? config.model}`,
           abstain: false
         };
@@ -144,12 +148,12 @@ export function createConfiguredLlmEstimator(
   env: Record<string, string | undefined> = process.env,
   fetcher?: typeof fetch
 ) {
-  const provider = env.LLM_PROVIDER === "openai" || env.LLM_PROVIDER === "local" ? env.LLM_PROVIDER : "deepseek";
+  const config = normalizeLlmConfig(env);
   return createLlmEstimator({
-    provider,
-    baseUrl: env.LLM_BASE_URL,
-    apiKey: env.LLM_API_KEY,
-    model: env.LLM_MODEL,
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    model: config.model,
     fetch: fetcher,
     timeoutMs: 30_000
   });
@@ -168,14 +172,33 @@ function likelihoodPrompt(input: EstimatorInput) {
       relevance: "number between 0 and 1",
       likelihoodRatio: "positive number; >1 supports, <1 opposes, around 1 neutral or unclear",
       confidence: "number between 0 and 1",
+      reviewRequired: "boolean; true when source ambiguity, weak attribution, or safety concerns require human review",
       rationale: "short reason in the same language as the evidence or hypothesis"
     },
+    scoringGuidance: [
+      "Score the full hypothesis, not just overlapping words or a subset of the claim.",
+      "Do not use outside knowledge to fill missing dates, locations, entities, quantities, qualifiers, or causal links.",
+      "If the evidence omits a material date, location, entity, quantity, qualifier, or causal condition required by the hypothesis, choose NEUTRAL with likelihoodRatio around 1 unless the missing constraint is clearly irrelevant.",
+      "Do not treat related predicates as equivalent: born is not named, released is not peaked, announced is not shipped, and associated with is not caused by.",
+      "Do not infer that a broad class includes a named item unless the evidence explicitly names that item.",
+      "When any material constraint is missing or only implied, set reviewRequired to true and explain which constraint is missing.",
+      "Use SUPPORTS only when the evidence makes the whole hypothesis materially more likely; use OPPOSES only when it directly contradicts a material part of the hypothesis.",
+      "Set reviewRequired to true when the evidence is partial, ambiguous, weakly attributed, stale relative to the hypothesis time window, or mixes supporting and opposing signals."
+    ],
     category: input.category,
     hypothesis: input.hypothesis,
     evidence: input.evidenceText,
     sourceCredibility: input.sourceCredibility,
+    ...(input.evidencePublishedAt ? { evidencePublishedAt: serializeTemporalValue(input.evidencePublishedAt) } : {}),
+    ...(input.evidenceObservedAt ? { evidenceObservedAt: serializeTemporalValue(input.evidenceObservedAt) } : {}),
     context: input.context ?? ""
   });
+}
+
+function serializeTemporalValue(value: Date | string) {
+  if (value instanceof Date) return value.toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
 }
 
 function llmAbstain(reason: string, config: { provider: string; model?: string }): EstimatorOutput {
@@ -194,20 +217,37 @@ function parseLlmLikelihoodJson(content: string) {
 
   try {
     const parsed = JSON.parse(jsonText) as Record<string, unknown>;
-    const direction = parseDirection(parsed.direction);
-    const relevance = clampProbability(parsed.relevance);
-    const confidence = clampProbability(parsed.confidence);
-    const likelihoodRatio = normalizeLikelihoodRatio(Number(parsed.likelihoodRatio), direction ?? undefined);
-    const rationale = typeof parsed.rationale === "string" ? parsed.rationale.trim() : "";
+    const direction = parseDirection(firstDefined(parsed, ["direction", "label", "stance"]));
+    const relevance = clampProbability(firstDefined(parsed, ["relevance", "relevancy"]));
+    const confidence = clampProbability(firstDefined(parsed, ["confidence", "confidence_score"]));
+    const rawLikelihoodRatio = Number(firstDefined(parsed, ["likelihoodRatio", "likelihood_ratio", "likelihood ratio", "lr"]));
+    const likelihoodRatio = normalizeLikelihoodRatio(rawLikelihoodRatio, direction ?? undefined);
+    const reviewRequired = parseBoolean(firstDefined(parsed, ["reviewRequired", "review_required", "needsReview", "needs_review"]));
+    const rationaleValue = firstDefined(parsed, ["rationale", "reason", "explanation"]);
+    const rationale = typeof rationaleValue === "string" ? rationaleValue.trim() : "";
 
     if (!direction || relevance === null || confidence === null || !Number.isFinite(likelihoodRatio) || likelihoodRatio <= 0 || !rationale) {
       return null;
     }
 
-    return { direction, relevance, likelihoodRatio, confidence, rationale };
+    return {
+      direction,
+      relevance,
+      likelihoodRatio,
+      confidence,
+      reviewRequired: reviewRequired || directionLikelihoodRatioConflict(direction, rawLikelihoodRatio),
+      rationale
+    };
   } catch {
     return null;
   }
+}
+
+function firstDefined(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    if (record[key] !== undefined) return record[key];
+  }
+  return undefined;
 }
 
 function extractJsonObject(content: string) {
@@ -222,13 +262,25 @@ function extractJsonObject(content: string) {
 }
 
 function parseDirection(value: unknown): EstimatorOutput["direction"] | null {
-  return value === "SUPPORTS" || value === "OPPOSES" || value === "MIXED" || value === "NEUTRAL" ? value : null;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  return normalized === "SUPPORTS" || normalized === "OPPOSES" || normalized === "MIXED" || normalized === "NEUTRAL" ? normalized : null;
 }
 
 function clampProbability(value: unknown) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return null;
   return Math.max(0, Math.min(1, numeric));
+}
+
+function parseBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "yes") return true;
+    if (normalized === "false" || normalized === "no") return false;
+  }
+  return false;
 }
 
 function normalizeLikelihoodRatio(value: number, direction: EstimatorOutput["direction"]) {
@@ -238,6 +290,14 @@ function normalizeLikelihoodRatio(value: number, direction: EstimatorOutput["dir
   if (direction === "SUPPORTS" && bounded < 1) return 1 / bounded;
   if (direction === "NEUTRAL") return Math.max(0.9, Math.min(1.1, bounded));
   return bounded;
+}
+
+function directionLikelihoodRatioConflict(direction: EstimatorOutput["direction"], value: number) {
+  if (!Number.isFinite(value) || value <= 0) return false;
+  if (direction === "SUPPORTS") return value <= 1;
+  if (direction === "OPPOSES") return value >= 1;
+  if (direction === "NEUTRAL") return value < 0.9 || value > 1.1;
+  return false;
 }
 
 export function createExternalModelEstimator(config: { endpoint?: string; version?: string }): LikelihoodEstimator {

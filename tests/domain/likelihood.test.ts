@@ -34,4 +34,21 @@ describe("likelihood estimator ensemble", () => {
     expect(ensemble.likelihoodRatio).toBe(1);
     expect(ensemble.confidence).toBe(0);
   });
+
+  it("requires review when any usable estimator explicitly asks for review", () => {
+    const ensemble = combineEstimatorOutputs([
+      { estimator: "lightweight", likelihoodRatio: 2, confidence: 0.8, weight: 1, rationale: "feature match" },
+      {
+        estimator: "llm",
+        likelihoodRatio: 3,
+        confidence: 0.7,
+        weight: 3,
+        rationale: "Needs human review due to source ambiguity.",
+        reviewRequired: true
+      }
+    ]);
+
+    expect(ensemble.reviewRequired).toBe(true);
+    expect(ensemble.usedEstimators).toEqual(["lightweight", "llm"]);
+  });
 });

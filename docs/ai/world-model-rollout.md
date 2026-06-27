@@ -18,6 +18,8 @@ LLM_MODEL="deepseek-chat"
 MODEL_ARTIFACT_DIR="./model-artifacts"
 ```
 
+DeepSeek is the default v1 scorer. For a standard DeepSeek setup, `LLM_API_KEY` is sufficient; `LLM_PROVIDER`, `LLM_BASE_URL`, and `LLM_MODEL` only need to be set when overriding the default provider, endpoint, or model.
+
 For `myWeb` proxy hosting, set `WORLDMODEL_ACCESS_MODE="proxy"` in `worldModel` and use the same proxy secret in both apps:
 
 ```env
@@ -78,4 +80,8 @@ npm run build
 - Source credentials are referenced by `credentialRef` only; real cookies, API keys, and tokens stay in environment variables or local secret files.
 - Social adapters are dry-run stubs until a platform-specific credential profile is configured.
 - LLM and external deep-model estimators abstain when provider credentials or endpoints are missing.
+- Source evidence quality warnings are calibration hints. Review rejected evidence and rolled-back updates, then apply the suggested credibility and auto-confirm threshold from the source row when appropriate; v1 does not rewrite source configuration without that operator action.
+- `npm run train:fetch -- --sources github,hugging_face --limit 20` refreshes only real platform samples for a faster LLM evaluation data update.
+- `npm run train:fetch -- --sources manifold --limit 20` refreshes resolved prediction-market samples for calibration-oriented LLM evaluation.
+- `npm run train:evaluate` evaluates 30 samples by default so the auto-apply readiness gate has enough evidence; pass `-- --limit 5` only for a quick smoke run.
 - Lightweight training scripts write portable artifacts under `model-artifacts/`, which is ignored by Git.

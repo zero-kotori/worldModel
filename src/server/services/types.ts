@@ -15,9 +15,9 @@ export type ObservationSourceKind =
   | "GDELT"
   | "PREDICTION_MARKET"
   | "SOCIAL";
-export type ObservationStatus = "PENDING" | "DUPLICATE" | "UNKNOWN" | "CONFIRMED" | "REJECTED";
+export type ObservationStatus = "PENDING" | "DUPLICATE" | "UNKNOWN" | "CONFIRMED" | "REJECTED" | "SETTLED";
 export type EvidenceConfirmationMode = "MANUAL" | "AUTO";
-export type EvidenceStatus = "ACTIVE" | "SUPERSEDED" | "REJECTED";
+export type EvidenceStatus = "ACTIVE" | "SUPERSEDED" | "REJECTED" | "DELETED";
 export type EvidenceDirection = "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL";
 export type ObservationRunStatus = "SUCCESS" | "FAILED" | "DRY_RUN" | "REVIEW_ONLY";
 export type ModelArtifactKind = "LIGHTWEIGHT" | "LLM" | "DEEP_ADAPTER";
@@ -28,6 +28,7 @@ export type HypothesisRecord = {
   beliefId: string;
   proposition: string;
   notes: string;
+  evidenceSearchQuery?: string;
   stance: HypothesisStance;
   priorProbability: number;
   currentProbability: number;
@@ -127,6 +128,7 @@ export type BayesianUpdateEventRecord = {
   beliefId: string;
   evidenceId: string;
   likelihoodRunId?: string;
+  likelihoodRunIds?: string[];
   priorSnapshot: ProbabilitySnapshot;
   posteriorSnapshot: ProbabilitySnapshot;
   mode: "APPLIED";
@@ -140,14 +142,18 @@ export type BayesianUpdateEventRecord = {
 export type ObservationRunRecord = {
   id: string;
   sourceId?: string;
+  sourceCode?: string;
   status: ObservationRunStatus;
   startedAt: Date;
   finishedAt?: Date;
   itemCount: number;
+  reprocessedObservationCount: number;
   deduplicatedCount: number;
   candidateCount: number;
   autoAppliedCount: number;
   reviewCount: number;
+  lowImpactCount: number;
+  unmatchedCount: number;
   queryCount: number;
   querySummary: EvidenceLoopQuery[];
   errorMessage?: string;
@@ -160,6 +166,7 @@ export type AutomationHeartbeatRecord = {
   nextRunAt?: Date;
   intervalMs: number;
   consecutiveFailureCount: number;
+  lastNotice: string;
   lastError: string;
   createdAt: Date;
   updatedAt: Date;
@@ -172,6 +179,10 @@ export type AutomationWorkerConfigRecord = {
   failureBackoffMultiplier: number;
   maxIntervalMs: number;
   reviewOnly: boolean;
+  maxQueries?: number;
+  maxSources?: number;
+  beliefIds?: string[];
+  sourceIds?: string[];
   maxObservations?: number;
   candidateThreshold?: number;
   autoConfirmThreshold?: number;
@@ -184,17 +195,44 @@ export type AutomationWorkerConfigRecord = {
 export type RunSourceOptions = {
   reviewOnly?: boolean;
   forceAutoApply?: boolean;
+  beliefIds?: string[];
   candidateThreshold?: number;
   autoConfirmThreshold?: number;
+  maxQueries?: number;
   maxObservations?: number;
+  queries?: EvidenceLoopQuery[];
+};
+
+export type RunDryRunOptions = {
   queries?: EvidenceLoopQuery[];
 };
 
 export type EvidenceLoopQuery = {
   beliefId: string;
+  beliefCode?: string;
   hypothesisId: string;
+  hypothesisCode?: string;
   category: BeliefCategory;
+  purpose?: "EVIDENCE" | "SETTLEMENT_REVIEW";
   query: string;
+  priority?: number;
+  priorityReason?: string;
+  uncertainty?: number;
+  evidenceCount?: number;
+  supportEvidenceCount?: number;
+  opposingEvidenceCount?: number;
+  counterEvidenceGap?: boolean;
+  staleEvidenceDays?: number;
+  averageEvidenceRelevance?: number;
+  averageEvidenceConfidence?: number;
+  fragileCertainty?: boolean;
+  latestEvidenceAt?: string;
+  calibrationError?: number;
+  calibrationHypothesisId?: string;
+  calibrationHypothesisCode?: string;
+  settlementDue?: boolean;
+  expiresAt?: string;
+  expiryCondition?: string;
 };
 
 export type EvidenceLoopOptions = {
@@ -203,18 +241,31 @@ export type EvidenceLoopOptions = {
   sourceIds?: string[];
   candidateThreshold?: number;
   autoConfirmThreshold?: number;
+  maxQueries?: number;
   maxObservations?: number;
+  maxSources?: number;
   bootstrapDefaultSources?: boolean;
   forceAutoApply?: boolean;
 };
 
-export type EvidenceLoopSkippedSource = {
-  sourceId: string;
-  sourceName: string;
-  reason: "CONSECUTIVE_FAILURES";
-  consecutiveFailureCount: number;
-  latestError?: string;
-};
+export type EvidenceLoopSkippedSource =
+  | {
+      sourceId: string;
+      sourceCode?: string;
+      sourceName: string;
+      reason: "CONSECUTIVE_FAILURES";
+      consecutiveFailureCount: number;
+      latestError?: string;
+      retryAfterAt?: Date;
+    }
+  | {
+      sourceId: string;
+      sourceCode?: string;
+      sourceName: string;
+      reason: "LOW_INCREMENT";
+      consecutiveDuplicateOnlyCount: number;
+      retryAfterAt?: Date;
+    };
 
 export type EvidenceLoopResult = {
   mode: "auto-apply" | "review-only";
@@ -223,10 +274,13 @@ export type EvidenceLoopResult = {
   skippedSourceCount: number;
   skippedSources: EvidenceLoopSkippedSource[];
   itemCount: number;
+  reprocessedObservationCount: number;
   deduplicatedCount: number;
   candidateCount: number;
   autoAppliedCount: number;
   reviewCount: number;
+  lowImpactCount: number;
+  unmatchedCount: number;
   failureCount: number;
   queries: EvidenceLoopQuery[];
   runs: ObservationRunRecord[];
@@ -246,20 +300,44 @@ export type ModelArtifactRecord = {
 export type CreateHypothesisInput = {
   proposition: string;
   priorProbability: number;
+  currentProbability?: number;
   stance?: HypothesisStance;
   notes?: string;
+  evidenceSearchQuery?: string;
   startsAt?: Date;
   expiresAt?: Date;
   expiryCondition?: string;
+  sourceObservationId?: string;
 };
 
 export type HypothesisRecommendation = Required<Pick<CreateHypothesisInput, "proposition" | "priorProbability" | "stance" | "notes">> & {
   evidenceSearchQuery: string;
   rationale: string;
+  sourceObservationId?: string;
+  calibrationHypothesisId?: string;
+  calibrationError?: number;
 };
+
+export type HypothesisRecommendationGeneratorInput = {
+  belief: BeliefRecord;
+  calibration?: {
+    hypothesis: HypothesisRecord;
+    outcome: 0 | 1;
+    predictedProbability: number;
+    error: number;
+    resolvedOutcome?: string;
+  };
+  sourceObservation?: ObservationRecord;
+  limit: number;
+};
+
+export type HypothesisRecommendationGenerator = (
+  input: HypothesisRecommendationGeneratorInput
+) => Promise<HypothesisRecommendation[]>;
 
 export type HypothesisRecommendationOptions = {
   limit?: number;
+  sourceObservationId?: string;
 };
 
 export type CreateBeliefInput = {
@@ -267,6 +345,7 @@ export type CreateBeliefInput = {
   category: BeliefCategory;
   description: string;
   probabilityMode: ProbabilityMode;
+  sourceObservationId?: string;
   hypotheses: CreateHypothesisInput[];
 };
 
@@ -278,11 +357,13 @@ export type UpdateHypothesisInput = Partial<
     | "beliefId"
     | "proposition"
     | "notes"
+    | "evidenceSearchQuery"
     | "stance"
     | "priorProbability"
     | "currentProbability"
     | "status"
     | "expiryCondition"
+    | "resolvedOutcome"
   >
 > & {
   startsAt?: Date | null;
@@ -302,6 +383,30 @@ export type CreateObservationInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type UpdateObservationInput = Partial<{
+  sourceId?: string | null;
+  title: string;
+  content: string;
+  url?: string;
+  author?: string;
+  credibility: number;
+  normalizedHash?: string;
+  semanticKey?: string;
+  metadata: Record<string, unknown>;
+}>;
+
+export type SettleObservationInput = {
+  observationId: string;
+  hypothesisId: string;
+  outcome: "RESOLVED_TRUE" | "RESOLVED_FALSE";
+  resolvedOutcome?: string;
+};
+
+export type SettleObservationResult = {
+  observation: ObservationRecord;
+  hypothesis: HypothesisRecord;
+};
+
 export type ConfirmEvidenceInput = {
   observationId: string;
   confirmationMode: EvidenceConfirmationMode;
@@ -312,6 +417,8 @@ export type ConfirmEvidenceInput = {
     likelihoodRatio: number;
     confidence: number;
     rationale: string;
+    reviewRequired?: boolean;
+    estimatorOutputs?: EstimatorOutput[];
   }>;
 };
 
@@ -328,6 +435,8 @@ export type UpdateEvidenceInput = {
     likelihoodRatio: number;
     confidence: number;
     rationale: string;
+    reviewRequired?: boolean;
+    estimatorOutputs?: EstimatorOutput[];
   }>;
 };
 
@@ -340,8 +449,16 @@ export type ConnectEvidenceHypothesisInput = {
   rationale: string;
 };
 
-export type UpdateEvidenceRecordInput = Partial<Omit<EvidenceRecord, "id" | "observationId" | "confirmedAt" | "links">> & {
+export type DisconnectEvidenceHypothesisInput = {
+  hypothesisId: string;
+};
+
+export type UpdateEvidenceRecordInput = Partial<Omit<EvidenceRecord, "id" | "observationId" | "links">> & {
   links?: EvidenceHypothesisLinkRecord[];
+};
+export type UpdateSourceInput = Partial<CreateSourceInput>;
+export type UpdateSourceRecordInput = Partial<Omit<ObservationSourceRecord, "id" | "createdAt">> & {
+  updatedAt: Date;
 };
 
 export type RunLikelihoodInput = {
@@ -362,7 +479,8 @@ export type SourcePresetRecord = CreateSourceInput & {
 
 export type ConfirmAndApplyEvidenceResult = {
   evidence: EvidenceRecord;
-  event: BayesianUpdateEventRecord;
+  event: BayesianUpdateEventRecord | null;
+  events: BayesianUpdateEventRecord[];
 };
 
 export type WorldModelStore = {
@@ -383,11 +501,13 @@ export type WorldModelStore = {
   listEvidence(): Promise<EvidenceRecord[]>;
   updateEvidence(id: string, patch: UpdateEvidenceRecordInput): Promise<EvidenceRecord>;
   createLikelihoodRun(input: LikelihoodRunRecord): Promise<LikelihoodRunRecord>;
+  listLikelihoodRuns(): Promise<LikelihoodRunRecord[]>;
   createUpdateEvent(input: BayesianUpdateEventRecord): Promise<BayesianUpdateEventRecord>;
   listUpdateEvents(): Promise<BayesianUpdateEventRecord[]>;
   getUpdateEvent(id: string): Promise<BayesianUpdateEventRecord | null>;
   updateUpdateEvent(id: string, patch: Partial<BayesianUpdateEventRecord>): Promise<BayesianUpdateEventRecord>;
   createSource(input: ObservationSourceRecord): Promise<ObservationSourceRecord>;
+  updateSource(id: string, patch: UpdateSourceRecordInput): Promise<ObservationSourceRecord>;
   listSources(): Promise<ObservationSourceRecord[]>;
   getSource(id: string): Promise<ObservationSourceRecord | null>;
   createObservationRun(input: ObservationRunRecord): Promise<ObservationRunRecord>;
@@ -412,7 +532,9 @@ export type WorldModelServices = {
   };
   observations: {
     createObservation(input: CreateObservationInput): Promise<ObservationRecord>;
+    updateObservation(id: string, input: UpdateObservationInput): Promise<ObservationRecord>;
     rejectObservation(id: string): Promise<ObservationRecord>;
+    settleObservation(input: SettleObservationInput): Promise<SettleObservationResult>;
     listObservations(): Promise<ObservationRecord[]>;
   };
   evidence: {
@@ -420,16 +542,21 @@ export type WorldModelServices = {
     confirmAndApplyObservation(input: ConfirmEvidenceInput): Promise<ConfirmAndApplyEvidenceResult>;
     updateAndReapply(evidenceId: string, input: UpdateEvidenceInput): Promise<ConfirmAndApplyEvidenceResult>;
     connectHypothesis(evidenceId: string, input: ConnectEvidenceHypothesisInput): Promise<ConfirmAndApplyEvidenceResult>;
+    disconnectHypothesis(evidenceId: string, input: DisconnectEvidenceHypothesisInput): Promise<ConfirmAndApplyEvidenceResult>;
     reject(evidenceId: string): Promise<EvidenceRecord>;
+    deleteEvidence(evidenceId: string): Promise<EvidenceRecord>;
     listEvidence(): Promise<EvidenceRecord[]>;
   };
   likelihood: {
     runLikelihood(input: RunLikelihoodInput): Promise<LikelihoodRunRecord>;
+    listRuns(): Promise<LikelihoodRunRecord[]>;
   };
   updates: {
     listEvents(): Promise<BayesianUpdateEventRecord[]>;
     createPreview(evidenceId: string): Promise<UpdatePreview>;
+    createPreviews(evidenceId: string): Promise<UpdatePreview[]>;
     applyPreview(preview: UpdatePreview, likelihoodRunId?: string): Promise<BayesianUpdateEventRecord>;
+    applyEvidence(evidenceId: string, likelihoodRunId?: string): Promise<BayesianUpdateEventRecord[]>;
     rollback(eventId: string): Promise<BayesianUpdateEventRecord & { restoredProbabilities: ProbabilitySnapshot }>;
   };
   sources: {
@@ -438,7 +565,8 @@ export type WorldModelServices = {
     createPreset(id: string): Promise<ObservationSourceRecord>;
     createMissingPresets(): Promise<ObservationSourceRecord[]>;
     createSource(input: CreateSourceInput): Promise<ObservationSourceRecord>;
-    runDryRun(sourceId: string, observations: RawObservationInput[]): Promise<ObservationRunRecord>;
+    updateSource(id: string, input: UpdateSourceInput): Promise<ObservationSourceRecord>;
+    runDryRun(sourceId: string, observations: RawObservationInput[], options?: RunDryRunOptions): Promise<ObservationRunRecord>;
     runSource(sourceId: string, options?: RunSourceOptions): Promise<ObservationRunRecord>;
     listRuns(): Promise<ObservationRunRecord[]>;
   };

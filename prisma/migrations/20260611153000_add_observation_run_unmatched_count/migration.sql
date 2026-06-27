@@ -1,0 +1,2 @@
+ALTER TABLE "ObservationRun"
+  ADD COLUMN "unmatchedCount" INTEGER NOT NULL DEFAULT 0;

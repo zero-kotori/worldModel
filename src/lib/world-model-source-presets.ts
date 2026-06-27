@@ -83,6 +83,71 @@ export const sourcePresetDefinitions: SourcePresetDefinition[] = [
     enabled: true,
     autoConfirm: false,
     autoConfirmThreshold: 0.88
+  },
+  {
+    id: "github-repository-query",
+    name: "GitHub Repository Query",
+    description: "GitHub repository search API for open-source adoption, release, and ecosystem signals.",
+    kind: "GITHUB",
+    url: "https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=10",
+    adapter: "github_repositories",
+    credentialRef: undefined,
+    credibility: 0.64,
+    enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.88
+  },
+  {
+    id: "huggingface-model-query",
+    name: "Hugging Face Model Query",
+    description: "Hugging Face model search API for model release, download, and ecosystem adoption signals.",
+    kind: "HUGGING_FACE",
+    url: "https://huggingface.co/api/models?search={query}&limit=10&sort=lastModified&direction=-1",
+    adapter: "huggingface_models",
+    credentialRef: undefined,
+    credibility: 0.66,
+    enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.88
+  },
+  {
+    id: "gdelt-doc-query",
+    name: "GDELT Document Query",
+    description: "GDELT document API for global news and event observations tied to belief and hypothesis queries.",
+    kind: "GDELT",
+    url: "https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=ArtList&format=json&maxrecords=10",
+    adapter: "gdelt_doc_articles",
+    credentialRef: undefined,
+    credibility: 0.58,
+    enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.9
+  },
+  {
+    id: "polymarket-query",
+    name: "Polymarket Query",
+    description: "Polymarket public market search for prediction market questions and liquidity-backed signals.",
+    kind: "PREDICTION_MARKET",
+    url: "https://gamma-api.polymarket.com/markets?search={query}&limit=10&active=true&closed=false",
+    adapter: "polymarket_markets",
+    credentialRef: undefined,
+    credibility: 0.6,
+    enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.9
+  },
+  {
+    id: "reddit-public-query",
+    name: "Reddit Public Query",
+    description: "Public Reddit search pages for weak social discussion signals that should remain review-first.",
+    kind: "SOCIAL",
+    url: "https://www.reddit.com/search/?q={query}&sort=new",
+    adapter: "public_social_search",
+    credentialRef: undefined,
+    credibility: 0.42,
+    enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.95
   }
 ];
 

@@ -1,4 +1,5 @@
 import {
+  createConfiguredLlmEstimator,
   createExternalModelEstimator,
   createLightweightEstimator,
   createLlmEstimator
@@ -66,6 +67,209 @@ describe("likelihood estimators", () => {
     });
   });
 
+  it("uses DeepSeek defaults when only the v1 LLM API key is configured", async () => {
+    const requests: Array<{ url: string; body: Record<string, unknown>; authorization: string | null }> = [];
+    const fakeFetch: typeof fetch = async (url, init) => {
+      requests.push({
+        url: String(url),
+        body: JSON.parse(String(init?.body)),
+        authorization: new Headers(init?.headers).get("authorization")
+      });
+      return new Response(
+        JSON.stringify({
+          model: "deepseek-chat",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "SUPPORTS",
+                  relevance: 0.8,
+                  likelihoodRatio: 2,
+                  confidence: 0.72,
+                  rationale: "The configured API key can use the default DeepSeek scorer."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    const llm = createConfiguredLlmEstimator(
+      {
+        LLM_API_KEY: "test-key"
+      },
+      fakeFetch
+    );
+
+    const output = await llm.estimate({
+      evidenceText: "AI coding agents shipped into production workflows.",
+      hypothesis: "AI agents accelerate engineering teams",
+      category: "AI_TREND",
+      sourceCredibility: 0.8
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe("https://api.deepseek.com/chat/completions");
+    expect(requests[0].authorization).toBe("Bearer test-key");
+    expect(requests[0].body).toMatchObject({ model: "deepseek-chat" });
+    expect(output).toMatchObject({
+      estimator: "llm",
+      modelVersion: "deepseek:deepseek-chat",
+      abstain: false
+    });
+  });
+
+  it("parses explicit LLM review requirements from structured likelihood output", async () => {
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: "deepseek-chat",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "SUPPORTS",
+                  relevance: 0.86,
+                  likelihoodRatio: 2.4,
+                  confidence: 0.78,
+                  reviewRequired: true,
+                  rationale: "The evidence is relevant, but source ambiguity needs human review."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    const llm = createLlmEstimator({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "test-key",
+      model: "deepseek-chat",
+      fetch: fakeFetch
+    });
+
+    await expect(
+      llm.estimate({
+        evidenceText: "Enterprise adoption increased after agents shipped.",
+        hypothesis: "AI agents accelerate enterprise engineering teams",
+        category: "AI_TREND",
+        sourceCredibility: 0.8
+      })
+    ).resolves.toMatchObject({
+      estimator: "llm",
+      reviewRequired: true,
+      abstain: false
+    });
+  });
+
+  it("includes evidence timing context in the LLM likelihood prompt", async () => {
+    const requests: Array<{ body: Record<string, unknown> }> = [];
+    const fakeFetch: typeof fetch = async (_url, init) => {
+      requests.push({ body: JSON.parse(String(init?.body)) });
+      return new Response(
+        JSON.stringify({
+          model: "deepseek-chat",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "SUPPORTS",
+                  relevance: 0.86,
+                  likelihoodRatio: 2.4,
+                  confidence: 0.78,
+                  reviewRequired: false,
+                  rationale: "The time context is compatible with the hypothesis."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    const llm = createLlmEstimator({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "test-key",
+      model: "deepseek-chat",
+      fetch: fakeFetch
+    });
+
+    await llm.estimate({
+      evidenceText: "Enterprise adoption increased after agents shipped.",
+      hypothesis: "AI agents accelerate enterprise engineering teams",
+      category: "AI_TREND",
+      sourceCredibility: 0.8,
+      evidencePublishedAt: new Date("2026-06-17T12:00:00.000Z"),
+      evidenceObservedAt: new Date("2026-06-18T01:30:00.000Z")
+    });
+
+    const messages = requests[0].body.messages as Array<{ role: string; content: string }>;
+    const prompt = JSON.parse(messages.find((message) => message.role === "user")?.content ?? "{}");
+    expect(prompt).toMatchObject({
+      evidencePublishedAt: "2026-06-17T12:00:00.000Z",
+      evidenceObservedAt: "2026-06-18T01:30:00.000Z"
+    });
+  });
+
+  it("instructs the LLM scorer to keep partial or missing-constraint evidence neutral", async () => {
+    const requests: Array<{ body: Record<string, unknown> }> = [];
+    const fakeFetch: typeof fetch = async (_url, init) => {
+      requests.push({ body: JSON.parse(String(init?.body)) });
+      return new Response(
+        JSON.stringify({
+          model: "deepseek-chat",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "NEUTRAL",
+                  relevance: 0.4,
+                  likelihoodRatio: 1,
+                  confidence: 0.62,
+                  reviewRequired: true,
+                  rationale: "The evidence supports only part of the hypothesis."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    const llm = createLlmEstimator({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "test-key",
+      model: "deepseek-chat",
+      fetch: fakeFetch
+    });
+
+    await llm.estimate({
+      evidenceText: "The song peaked at number two on the Billboard Hot 100.",
+      hypothesis: "Beautiful reached number two on the Billboard Hot 100 in 2003.",
+      category: "TECH_TREND",
+      sourceCredibility: 0.8
+    });
+
+    const messages = requests[0].body.messages as Array<{ role: string; content: string }>;
+    const prompt = JSON.parse(messages.find((message) => message.role === "user")?.content ?? "{}");
+    expect(prompt.scoringGuidance).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("full hypothesis"),
+        expect.stringContaining("Do not use outside knowledge"),
+        expect.stringContaining("date"),
+        expect.stringContaining("born"),
+        expect.stringContaining("named"),
+        expect.stringContaining("named item"),
+        expect.stringContaining("NEUTRAL"),
+        expect.stringContaining("reviewRequired")
+      ])
+    );
+  });
+
   it("uses transparent lightweight features when an artifact is available", async () => {
     const estimator = createLightweightEstimator({
       version: "0.1.0",
@@ -83,6 +287,143 @@ describe("likelihood estimators", () => {
     expect(output.abstain).toBe(false);
     expect(output.likelihoodRatio).toBeGreaterThan(1);
     expect(output.rationale).toContain("support terms");
+  });
+
+  it("normalizes mixed-case LLM direction values before scoring", async () => {
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: "deepseek-chat",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "opposes",
+                  relevance: 0.8,
+                  likelihoodRatio: 4,
+                  confidence: 0.74,
+                  rationale: "The evidence weakens the hypothesis."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    const llm = createLlmEstimator({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "test-key",
+      model: "deepseek-chat",
+      fetch: fakeFetch
+    });
+
+    await expect(
+      llm.estimate({
+        evidenceText: "Enterprise rollout slowed after governance reviews.",
+        hypothesis: "AI agents accelerate enterprise engineering teams",
+        category: "AI_TREND",
+        sourceCredibility: 0.8
+      })
+    ).resolves.toMatchObject({
+      estimator: "llm",
+      direction: "OPPOSES",
+      likelihoodRatio: 0.25,
+      confidence: 0.74,
+      abstain: false
+    });
+  });
+
+  it("marks direction and likelihood-ratio contradictions as requiring review", async () => {
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: "deepseek-chat",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "SUPPORTS",
+                  relevance: 0.88,
+                  likelihoodRatio: 0.4,
+                  confidence: 0.81,
+                  reviewRequired: false,
+                  rationale: "The evidence supports the hypothesis, but the numeric likelihood ratio contradicts that direction."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    const llm = createLlmEstimator({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "test-key",
+      model: "deepseek-chat",
+      fetch: fakeFetch
+    });
+
+    await expect(
+      llm.estimate({
+        evidenceText: "Enterprise adoption increased after agents shipped.",
+        hypothesis: "AI agents accelerate enterprise engineering teams",
+        category: "AI_TREND",
+        sourceCredibility: 0.8
+      })
+    ).resolves.toMatchObject({
+      estimator: "llm",
+      direction: "SUPPORTS",
+      likelihoodRatio: 2.5,
+      reviewRequired: true,
+      abstain: false
+    });
+  });
+
+  it("accepts common LLM JSON field aliases before abstaining", async () => {
+    const fakeFetch: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          model: "deepseek-chat",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "supports",
+                  relevance: 0.82,
+                  likelihood_ratio: 3.2,
+                  confidence: 0.79,
+                  reason: "The evidence supports the hypothesis despite using field aliases."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    const llm = createLlmEstimator({
+      provider: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      apiKey: "test-key",
+      model: "deepseek-chat",
+      fetch: fakeFetch
+    });
+
+    await expect(
+      llm.estimate({
+        evidenceText: "Enterprise adoption increased after agents shipped.",
+        hypothesis: "AI agents accelerate enterprise engineering teams",
+        category: "AI_TREND",
+        sourceCredibility: 0.8
+      })
+    ).resolves.toMatchObject({
+      estimator: "llm",
+      direction: "SUPPORTS",
+      likelihoodRatio: 3.2,
+      confidence: 0.79,
+      rationale: "The evidence supports the hypothesis despite using field aliases.",
+      abstain: false
+    });
   });
 
   it("abstains lightweight estimation without an artifact", async () => {

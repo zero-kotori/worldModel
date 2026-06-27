@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import {
@@ -13,33 +14,68 @@ import {
   type ReactFlowInstance
 } from "@xyflow/react";
 import {
+  confirmGraphObservationAction,
   connectEvidenceHypothesisAction,
+  connectObservationHypothesisAction,
+  connectSourceObservationAction,
+  deleteEvidenceAction,
+  disconnectEvidenceHypothesisAction,
+  rejectEvidenceAction,
   rollbackUpdateAction,
   updateBeliefAction,
   updateEvidenceAction,
-  updateHypothesisAction
+  updateGraphObservationAction,
+  updateHypothesisAction,
+  updateSourceAction
 } from "@/app/admin/world-model/actions";
 import type { WorldModelGraph, WorldModelGraphNode, WorldModelGraphNodeType } from "@/lib/world-model-graph";
-import type { WorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
+import {
+  createEvidenceAuditRows,
+  createEvidenceEdgeEditorRows,
+  createEvidenceLinkEditorRows,
+  createObservationConnectionEditorRows,
+  createUpdateAuditRows,
+  type WorldModelGraphEditorData
+} from "@/lib/world-model-graph-editor";
 import { datetimeLocalValue } from "@/lib/world-model-beliefs-ui";
-import { createGraphInteractionOptions } from "@/lib/world-model-graph-ui";
+import { applySavedGraphLayout, graphLayoutStorageKey, parseSavedGraphLayout, serializeGraphLayout } from "@/lib/world-model-graph-layout";
+import {
+  createCompactGraphEdgeDisplay,
+  createGraphInitialSelection,
+  createGraphInteractionOptions,
+  createGraphNodeVisualStyle,
+  createGraphViewportOptions,
+  isDenseGraphEdgeLabelSet
+} from "@/lib/world-model-graph-ui";
 import { categoryLabels, evidenceDirectionLabels, hypothesisStanceLabels, probabilityModeLabels } from "@/lib/world-model-navigation";
+import { canRollbackUpdate } from "@/lib/world-model-updates-ui";
+import { canDeleteEvidence, canEditEvidence, canRejectEvidence } from "@/lib/world-model-evidence-ui";
 
 const nodeLayers: Record<WorldModelGraphNodeType, number> = {
-  belief: 0,
-  hypothesis: 1,
-  evidence: 2,
-  update: 3
+  source: 0,
+  belief: 1,
+  hypothesis: 2,
+  observation: 3,
+  evidence: 4,
+  update: 5
 };
 
 const beliefStatusOptions = ["ACTIVE", "PAUSED", "ARCHIVED"];
 const hypothesisStatusOptions = ["ACTIVE", "PAUSED", "RESOLVED_TRUE", "RESOLVED_FALSE", "ARCHIVED"];
+const sourceKindOptions = ["RSS", "WEB_PAGE", "SEARCH", "GITHUB", "HUGGING_FACE", "GDELT", "PREDICTION_MARKET", "SOCIAL"].map(
+  (value) => ({ value, label: value })
+);
 
 type FlowData = {
   label: string;
   domainId: string;
   code: string;
   type: WorldModelGraphNodeType;
+};
+
+type FlowEdgeData = {
+  edgeId: string;
+  fullLabel: string;
 };
 
 type PendingConnection = {
@@ -52,14 +88,28 @@ type PendingConnection = {
 };
 
 type WorldModelGraphViewMode = "embedded" | "workspace";
+type WorldModelGraphInitialSelection = {
+  nodeId?: string;
+};
+
+function ReturnPathField({ returnPath }: { returnPath?: string }) {
+  return returnPath ? <input type="hidden" name="returnPath" value={returnPath} /> : null;
+}
+
+function evidenceLibraryHref(evidence: { code: string }) {
+  const evidenceCode = encodeURIComponent(evidence.code);
+  return `/admin/world-model/evidence?evidence=${evidenceCode}#${evidenceCode}`;
+}
 
 function nodeColor(node: WorldModelGraphNode) {
   if (node.status === "REJECTED" || node.status === "ROLLED_BACK") return "#9aa4ad";
+  if (node.type === "source") return node.status === "DISABLED" ? "#9aa4ad" : "#3d5a80";
   if (node.type === "belief") return "#2f6f58";
   if (node.type === "hypothesis") {
     const probability = node.probability ?? 0.5;
     return probability >= 0.66 ? "#2f6f58" : probability <= 0.33 ? "#9b3b4a" : "#8a6d3b";
   }
+  if (node.type === "observation") return "#b7791f";
   if (node.type === "evidence") return "#6b5b95";
   return "#3d5a80";
 }
@@ -77,10 +127,26 @@ function nodeLabel(node: WorldModelGraphNode) {
       ? `强度 ${(node.strength * 100).toFixed(1)}%`
       : node.type === "hypothesis" && node.probability !== undefined
         ? `概率 ${(node.probability * 100).toFixed(1)}%`
-        : node.type === "evidence" && node.credibility !== undefined
+        : (node.type === "source" || node.type === "observation" || node.type === "evidence") && node.credibility !== undefined
           ? `可信度 ${node.credibility.toFixed(2)}`
           : node.status;
   return `${node.code} · ${node.label}${metric ? `\n${metric}` : ""}`;
+}
+
+function formatProbability(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatPointDelta(value: number) {
+  const points = value * 100;
+  const sign = points > 0 ? "+" : "";
+  return `${sign}${points.toFixed(1)}pp`;
+}
+
+function deltaToneClass(delta: number) {
+  if (delta > 0.000001) return "text-moss";
+  if (delta < -0.000001) return "text-berry";
+  return "text-ink/55";
 }
 
 function createFlowNodeIdMap(nodes: WorldModelGraph["nodes"]) {
@@ -112,16 +178,19 @@ function createFlowNodes(nodes: WorldModelGraph["nodes"], nodeIdMap: Map<string,
   });
 }
 
-function createFlowEdges(edges: WorldModelGraph["edges"], nodeIdMap: Map<string, string>): Edge[] {
+function createFlowEdges(edges: WorldModelGraph["edges"], nodeIdMap: Map<string, string>): Edge<FlowEdgeData>[] {
+  const dense = isDenseGraphEdgeLabelSet(edges.length);
   return edges.flatMap((edge, index) => {
     const source = nodeIdMap.get(edge.source);
     const target = nodeIdMap.get(edge.target);
     if (!source || !target) return [];
+    const display = createCompactGraphEdgeDisplay(edge, { dense });
     return {
       id: `${edge.relation}:${source}:${target}:${index + 1}`,
       source,
       target,
-      label: edge.label,
+      label: display.label,
+      data: { edgeId: edge.id, fullLabel: display.fullLabel },
       animated: edge.status === "APPLIED",
       style: {
         stroke: edgeColor(edge),
@@ -133,31 +202,14 @@ function createFlowEdges(edges: WorldModelGraph["edges"], nodeIdMap: Map<string,
   });
 }
 
-function layoutStorageKey(graph: WorldModelGraph) {
-  return `world-model-graph-layout:${graph.nodes.map((node) => node.code).join("|")}`;
-}
-
-function mergeSavedPositions(nodes: Node<FlowData>[], storageKey: string) {
+function mergeSavedPositions(nodes: Node<FlowData>[]) {
   if (typeof window === "undefined") return nodes;
-  const raw = window.localStorage.getItem(storageKey);
-  if (!raw) return nodes;
-  try {
-    const saved = JSON.parse(raw) as Record<string, { x: number; y: number }>;
-    return nodes.map((node) => ({
-      ...node,
-      position: saved[node.id] ?? node.position
-    }));
-  } catch {
-    return nodes;
-  }
+  return applySavedGraphLayout(nodes, parseSavedGraphLayout(window.localStorage.getItem(graphLayoutStorageKey)));
 }
 
-function savePositions(nodes: Node<FlowData>[], storageKey: string) {
+function savePositions(nodes: Node<FlowData>[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(
-    storageKey,
-    JSON.stringify(Object.fromEntries(nodes.map((node) => [node.id, node.position])))
-  );
+  window.localStorage.setItem(graphLayoutStorageKey, JSON.stringify(serializeGraphLayout(nodes)));
 }
 
 function Field({
@@ -273,14 +325,27 @@ function connectionIntent(connection: PendingConnection) {
   if (connection.sourceType === "hypothesis" && connection.targetType === "evidence") {
     return { kind: "connectEvidence" as const, evidenceId: connection.targetId, hypothesisId: connection.sourceId };
   }
+  if (connection.sourceType === "observation" && connection.targetType === "hypothesis") {
+    return { kind: "confirmObservation" as const, observationId: connection.sourceId, hypothesisId: connection.targetId };
+  }
+  if (connection.sourceType === "hypothesis" && connection.targetType === "observation") {
+    return { kind: "confirmObservation" as const, observationId: connection.targetId, hypothesisId: connection.sourceId };
+  }
+  if (connection.sourceType === "source" && connection.targetType === "observation") {
+    return { kind: "assignSource" as const, sourceId: connection.sourceId, observationId: connection.targetId };
+  }
+  if (connection.sourceType === "observation" && connection.targetType === "source") {
+    return { kind: "assignSource" as const, sourceId: connection.targetId, observationId: connection.sourceId };
+  }
   return { kind: "invalid" as const };
 }
 
-function BeliefEditor({ editor, beliefId }: { editor: WorldModelGraphEditorData; beliefId: string }) {
+function BeliefEditor({ editor, beliefId, returnPath }: { editor: WorldModelGraphEditorData; beliefId: string; returnPath?: string }) {
   const belief = editor.beliefs.find((item) => item.id === beliefId);
   if (!belief) return null;
   return (
     <form action={updateBeliefAction} className="grid gap-3">
+      <ReturnPathField returnPath={returnPath} />
       <input type="hidden" name="beliefId" value={belief.id} />
       <Field label="信念表" name="title" defaultValue={belief.title} required />
       <Select
@@ -302,11 +367,55 @@ function BeliefEditor({ editor, beliefId }: { editor: WorldModelGraphEditorData;
   );
 }
 
-function HypothesisEditor({ editor, hypothesisId }: { editor: WorldModelGraphEditorData; hypothesisId: string }) {
+export function SourceEditor({ editor, sourceId, returnPath }: { editor: WorldModelGraphEditorData; sourceId: string; returnPath?: string }) {
+  const source = editor.sources.find((item) => item.id === sourceId);
+  if (!source) return null;
+  return (
+    <form action={updateSourceAction} className="grid gap-3">
+      <ReturnPathField returnPath={returnPath} />
+      <input type="hidden" name="sourceId" value={source.id} />
+      <Field label="名称" name="name" defaultValue={source.name} required />
+      <Select label="类型" name="kind" defaultValue={source.kind} options={sourceKindOptions} />
+      <Field label="URL" name="url" type="url" defaultValue={source.url ?? ""} />
+      <Field label="Adapter" name="adapter" defaultValue={source.adapter} required />
+      <Field label="凭据引用名" name="credentialRef" defaultValue={source.credentialRef ?? ""} />
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="可信度" name="credibility" type="number" step="0.01" min="0" max="1" defaultValue={source.credibility} />
+        <Field
+          label="自动确认阈值"
+          name="autoConfirmThreshold"
+          type="number"
+          step="0.01"
+          min="0"
+          max="1"
+          defaultValue={source.autoConfirmThreshold}
+        />
+      </div>
+      <label className="flex items-center gap-2 text-sm text-ink/70">
+        <input name="enabled" type="checkbox" defaultChecked={source.enabled} /> 启用
+      </label>
+      <label className="flex items-center gap-2 text-sm text-ink/70">
+        <input name="autoConfirm" type="checkbox" defaultChecked={source.autoConfirm} /> 自动确认
+      </label>
+      <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">保存来源</button>
+    </form>
+  );
+}
+
+export function HypothesisEditor({
+  editor,
+  hypothesisId,
+  returnPath
+}: {
+  editor: WorldModelGraphEditorData;
+  hypothesisId: string;
+  returnPath?: string;
+}) {
   const hypothesis = editor.hypotheses.find((item) => item.id === hypothesisId);
   if (!hypothesis) return null;
   return (
     <form action={updateHypothesisAction} className="grid gap-3">
+      <ReturnPathField returnPath={returnPath} />
       <input type="hidden" name="hypothesisId" value={hypothesis.id} />
       <Select
         label="所属信念组"
@@ -344,52 +453,518 @@ function HypothesisEditor({ editor, hypothesisId }: { editor: WorldModelGraphEdi
         <Field label="到期时间" name="expiresAt" type="datetime-local" defaultValue={datetimeLocalValue(hypothesis.expiresAt)} />
       </div>
       <Field label="过期条件" name="expiryCondition" defaultValue={hypothesis.expiryCondition ?? ""} />
+      <Field label="搜证查询" name="evidenceSearchQuery" defaultValue={hypothesis.evidenceSearchQuery ?? ""} />
+      <TextArea label="结算结果" name="resolvedOutcome" defaultValue={hypothesis.resolvedOutcome ?? ""} />
       <TextArea label="备注" name="notes" defaultValue={hypothesis.notes} />
       <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">保存假设</button>
     </form>
   );
 }
 
-function EvidenceEditor({ editor, evidenceId }: { editor: WorldModelGraphEditorData; evidenceId: string }) {
+export function EvidenceEditor({ editor, evidenceId, returnPath }: { editor: WorldModelGraphEditorData; evidenceId: string; returnPath?: string }) {
   const evidence = editor.evidence.find((item) => item.id === evidenceId);
   if (!evidence) return null;
-  return (
-    <form action={updateEvidenceAction} className="grid gap-3">
-      <input type="hidden" name="evidenceId" value={evidence.id} />
-      {evidence.links.map((link) => (
-        <div key={link.hypothesisId} className="hidden">
-          <input type="hidden" name="linkHypothesisIds" value={link.hypothesisId} />
-          <input type="hidden" name={`direction:${link.hypothesisId}`} value={link.direction} />
-          <input type="hidden" name={`relevance:${link.hypothesisId}`} value={link.relevance} />
-          <input type="hidden" name={`likelihoodRatio:${link.hypothesisId}`} value={link.likelihoodRatio} />
-          <input type="hidden" name={`confidence:${link.hypothesisId}`} value={link.confidence} />
-          <input type="hidden" name={`rationale:${link.hypothesisId}`} value={link.rationale} />
+  if (!canEditEvidence(evidence)) {
+    const auditRows = createEvidenceAuditRows(editor, evidenceId);
+    return (
+      <div className="grid gap-3">
+        <Link
+          href={evidenceLibraryHref(evidence)}
+          className="inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"
+        >
+          <Maximize2 size={16} /> 打开证据编辑区
+        </Link>
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/65">
+          {evidence.status} · 可信度 {evidence.credibility.toFixed(2)}
         </div>
-      ))}
-      <Field label="证据" name="title" defaultValue={evidence.title} required />
-      <Field label="链接" name="url" type="url" defaultValue={evidence.url ?? ""} />
-      <Field label="可信度" name="credibility" type="number" step="0.01" min="0" max="1" defaultValue={evidence.credibility} />
-      <TextArea label="正文" name="content" defaultValue={evidence.content} required />
-      <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">保存证据并重算</button>
-    </form>
+        <div className="grid gap-2 text-sm">
+          <div className="font-semibold text-ink">{evidence.title}</div>
+          {evidence.url ? <a className="break-all text-xs text-moss" href={evidence.url}>{evidence.url}</a> : null}
+          <div className="rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink/65">{evidence.content}</div>
+        </div>
+        <div className="grid gap-2">
+          <div className="text-xs font-medium text-ink/65">证据-假设关联</div>
+          {auditRows.length === 0 ? (
+            <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">暂无关联记录</div>
+          ) : (
+            auditRows.map((row) => (
+              <div key={row.hypothesisId} className="grid gap-1 rounded-md border border-line bg-panel p-3 text-xs text-ink/65">
+                <div>
+                  <span className="font-mono">{row.hypothesisCode}</span>
+                  <span className="ml-2">{row.beliefCode} · {row.beliefTitle} · {row.proposition}</span>
+                </div>
+                <div>
+                  {row.direction} · 相关性 {row.relevance.toFixed(2)} · LR {row.likelihoodRatio.toFixed(2)} · 置信度{" "}
+                  {row.confidence.toFixed(2)}
+                </div>
+                <div>{row.rationale}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }
+  const linkRows = createEvidenceLinkEditorRows(editor, evidenceId);
+  return (
+    <div className="grid gap-4">
+      <Link
+        href={evidenceLibraryHref(evidence)}
+        className="inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"
+      >
+        <Maximize2 size={16} /> 打开证据编辑区
+      </Link>
+      <form action={updateEvidenceAction} className="grid gap-3">
+        <ReturnPathField returnPath={returnPath} />
+        <input type="hidden" name="evidenceId" value={evidence.id} />
+        <Field label="证据" name="title" defaultValue={evidence.title} required />
+        <Field label="链接" name="url" type="url" defaultValue={evidence.url ?? ""} />
+        <Field label="可信度" name="credibility" type="number" step="0.01" min="0" max="1" defaultValue={evidence.credibility} />
+        <TextArea label="正文" name="content" defaultValue={evidence.content} required />
+        <div className="grid gap-3 border-t border-line pt-3">
+          <div className="text-xs font-medium text-ink/65">证据-假设关联</div>
+          {linkRows.map((row) => (
+            <div key={row.hypothesisId} className="grid gap-2 rounded-md border border-line bg-panel p-3">
+              <label className="flex items-start gap-2 text-sm text-ink/75">
+                <input name="linkHypothesisIds" value={row.hypothesisId} type="checkbox" defaultChecked={row.checked} className="mt-1" />
+                <span>
+                  <span className="font-mono text-xs">{row.hypothesisCode}</span>
+                  <span className="ml-2">{row.beliefCode} · {row.beliefTitle} · {row.proposition}</span>
+                </span>
+              </label>
+              <Select
+                label="方向"
+                name={`direction:${row.hypothesisId}`}
+                defaultValue={row.direction}
+                options={Object.entries(evidenceDirectionLabels).map(([value, label]) => ({ value, label }))}
+              />
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Field label="相关性" name={`relevance:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.relevance} />
+                <Field label="似然比" name={`likelihoodRatio:${row.hypothesisId}`} type="number" step="0.01" min="0.01" defaultValue={row.likelihoodRatio} />
+                <Field label="置信度" name={`confidence:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.confidence} />
+              </div>
+              <TextArea label="解释" name={`rationale:${row.hypothesisId}`} defaultValue={row.rationale} />
+            </div>
+          ))}
+        </div>
+        <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">保存证据并重算</button>
+      </form>
+      {canRejectEvidence(evidence) ? (
+        <form action={rejectEvidenceAction} className="border-t border-line pt-4">
+          <ReturnPathField returnPath={returnPath} />
+          <input type="hidden" name="evidenceId" value={evidence.id} />
+          <button className="min-h-9 w-full rounded-md border border-berry px-3 text-sm font-semibold text-berry">拒绝证据并回滚</button>
+        </form>
+      ) : null}
+      {canDeleteEvidence(evidence) ? (
+        <form action={deleteEvidenceAction} className="border-t border-line pt-4">
+          <ReturnPathField returnPath={returnPath} />
+          <input type="hidden" name="evidenceId" value={evidence.id} />
+          <button className="min-h-9 w-full rounded-md border border-berry px-3 text-sm font-semibold text-berry">删除证据</button>
+        </form>
+      ) : null}
+    </div>
   );
 }
 
-function UpdateEditor({ editor, updateId }: { editor: WorldModelGraphEditorData; updateId: string }) {
+export function ObservationEditor({ editor, observationId, returnPath }: { editor: WorldModelGraphEditorData; observationId: string; returnPath?: string }) {
+  const observation = editor.observations.find((item) => item.id === observationId);
+  if (!observation) return null;
+  const canConfirm = observation.status === "PENDING" || observation.status === "UNKNOWN";
+  const sourceOptions = [
+    { value: "", label: "未归属来源" },
+    ...editor.sources.map((source) => ({ value: source.id, label: `${source.code} · ${source.name}` }))
+  ];
+  return (
+    <div className="grid gap-4">
+      <form action={updateGraphObservationAction} className="grid gap-3">
+        <ReturnPathField returnPath={returnPath} />
+        <input type="hidden" name="observationId" value={observation.id} />
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink/55">
+          {observation.status} · 可信度 {observation.credibility.toFixed(2)}
+        </div>
+        <Select label="来源" name="sourceId" defaultValue={observation.sourceId ?? ""} options={sourceOptions} />
+        <Field label="观察" name="title" defaultValue={observation.title} required />
+        <Field label="链接" name="url" type="url" defaultValue={observation.url ?? ""} />
+        <Field label="作者/来源" name="author" defaultValue={observation.author ?? ""} />
+        <Field label="可信度" name="credibility" type="number" step="0.01" min="0" max="1" defaultValue={observation.credibility} />
+        <TextArea label="正文" name="content" defaultValue={observation.content} required />
+        <button className="min-h-9 rounded-md border border-line px-3 text-sm font-semibold text-ink">保存观察</button>
+      </form>
+      <form action={confirmGraphObservationAction} className="grid gap-3 border-t border-line pt-4">
+        <ReturnPathField returnPath={returnPath} />
+        <input type="hidden" name="observationId" value={observation.id} />
+        <div className="text-xs font-medium text-ink/65">观察-假设候选关联</div>
+        {observation.links.length === 0 ? (
+          <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">暂无候选关联</div>
+        ) : (
+          observation.links.map((row) => (
+            <div key={row.hypothesisId} className="grid gap-2 rounded-md border border-line bg-panel p-3">
+              <label className="flex items-start gap-2 text-sm text-ink/75">
+                <input name="linkHypothesisIds" value={row.hypothesisId} type="checkbox" defaultChecked={row.checked} className="mt-1" />
+                <span>
+                  <span className="font-mono text-xs">{row.hypothesisCode}</span>
+                  <span className="ml-2">{row.beliefCode} · {row.beliefTitle} · {row.proposition}</span>
+                </span>
+              </label>
+              <Select
+                label="方向"
+                name={`direction:${row.hypothesisId}`}
+                defaultValue={row.direction}
+                options={Object.entries(evidenceDirectionLabels).map(([value, label]) => ({ value, label }))}
+              />
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Field label="相关性" name={`relevance:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.relevance} />
+                <Field label="似然比" name={`likelihoodRatio:${row.hypothesisId}`} type="number" step="0.01" min="0.01" defaultValue={row.likelihoodRatio} />
+                <Field label="置信度" name={`confidence:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.confidence} />
+              </div>
+              <TextArea label="解释" name={`rationale:${row.hypothesisId}`} defaultValue={row.rationale} />
+            </div>
+          ))
+        )}
+        <button
+          disabled={!canConfirm || observation.links.length === 0}
+          className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          确认为证据并更新
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export function UpdateEditor({ editor, updateId, returnPath }: { editor: WorldModelGraphEditorData; updateId: string; returnPath?: string }) {
   const update = editor.updates.find((item) => item.id === updateId);
   if (!update) return null;
+  const audit = createUpdateAuditRows(editor, updateId);
+
   return (
-    <form action={rollbackUpdateAction} className="grid gap-3">
-      <input type="hidden" name="eventId" value={update.id} />
+    <div className="grid gap-3">
       <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/70">
         {update.code} · {update.status}
       </div>
-      <button className="min-h-9 rounded-md border border-line px-3 text-sm font-semibold text-ink">回滚更新</button>
+      {audit ? (
+        <div className="grid gap-3">
+          <div className="grid gap-2 rounded-md border border-line bg-panel p-3 text-xs text-ink/65">
+            <div>
+              <span className="font-mono">{audit.evidenceCode}</span>
+              <span className="ml-2">{audit.evidenceTitle}</span>
+              {audit.evidenceStatus ? <span className="ml-2">{audit.evidenceStatus}</span> : null}
+            </div>
+            <div>
+              <span className="font-mono">{audit.beliefCode}</span>
+              <span className="ml-2">{audit.beliefTitle}</span>
+            </div>
+            <div>
+              更新置信度 {audit.confidence.toFixed(2)}
+              {audit.likelihoodRunCodes && audit.likelihoodRunCodes.length > 0
+                ? ` · 似然运行 ${audit.likelihoodRunCodes.join("、")}`
+                : audit.likelihoodRunCode
+                  ? ` · 似然运行 ${audit.likelihoodRunCode}`
+                  : ""}
+            </div>
+          </div>
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="min-w-full text-left text-xs">
+              <thead className="bg-panel text-ink/50">
+                <tr>
+                  <th className="px-2 py-2">假设</th>
+                  <th className="px-2 py-2">概率</th>
+                  <th className="px-2 py-2">变化</th>
+                  <th className="px-2 py-2">证据关系</th>
+                </tr>
+              </thead>
+              <tbody>
+                {audit.rows.map((row) => (
+                  <tr key={row.hypothesisId} className="border-t border-line align-top">
+                    <td className="px-2 py-2">
+                      <div className="font-mono">{row.hypothesisCode}</div>
+                      <div className="mt-1 text-ink/70">{row.proposition}</div>
+                    </td>
+                    <td className="px-2 py-2">
+                      {formatProbability(row.prior)} {"->"} {formatProbability(row.posterior)}
+                    </td>
+                    <td className={`px-2 py-2 font-semibold ${deltaToneClass(row.delta)}`}>{formatPointDelta(row.delta)}</td>
+                    <td className="px-2 py-2 text-ink/65">
+                      {row.direction ? (
+                        <div>
+                          {row.direction} · 相关性 {row.relevance?.toFixed(2) ?? "-"} · LR {row.likelihoodRatio?.toFixed(2) ?? "-"} · 置信度{" "}
+                          {row.linkConfidence?.toFixed(2) ?? "-"}
+                        </div>
+                      ) : (
+                        <div>无当前证据关系</div>
+                      )}
+                      {row.rationale ? <div className="mt-1">{row.rationale}</div> : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {audit.explanations.length > 0 ? (
+            <div className="grid gap-1 rounded-md border border-line bg-panel p-3 text-xs text-ink/65">
+              {audit.explanations.map((explanation) => (
+                <div key={explanation}>{explanation}</div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {canRollbackUpdate(update) ? (
+        <form action={rollbackUpdateAction} className="grid gap-3">
+          <ReturnPathField returnPath={returnPath} />
+          <input type="hidden" name="eventId" value={update.id} />
+          <button className="min-h-9 rounded-md border border-line px-3 text-sm font-semibold text-ink">回滚更新</button>
+        </form>
+      ) : (
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">已回滚事件不能重复回滚。</div>
+      )}
+    </div>
+  );
+}
+
+function HiddenEvidenceLinkFields({ row }: { row: ReturnType<typeof createEvidenceEdgeEditorRows>[number] }) {
+  return (
+    <div className="hidden">
+      <input type="hidden" name="linkHypothesisIds" value={row.hypothesisId} />
+      <input type="hidden" name={`direction:${row.hypothesisId}`} value={row.direction} />
+      <input type="hidden" name={`relevance:${row.hypothesisId}`} value={row.relevance} />
+      <input type="hidden" name={`likelihoodRatio:${row.hypothesisId}`} value={row.likelihoodRatio} />
+      <input type="hidden" name={`confidence:${row.hypothesisId}`} value={row.confidence} />
+      <input type="hidden" name={`rationale:${row.hypothesisId}`} value={row.rationale} />
+    </div>
+  );
+}
+
+function EvidenceEdgeEditor({
+  editor,
+  edge,
+  returnPath
+}: {
+  editor: WorldModelGraphEditorData;
+  edge: WorldModelGraph["edges"][number];
+  returnPath?: string;
+}) {
+  const evidence = editor.evidence.find((item) => item.id === edge.source);
+  if (!evidence) return <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">证据已不存在</div>;
+
+  if (!canEditEvidence(evidence)) {
+    const auditRows = createEvidenceAuditRows(editor, evidence.id).filter((row) => row.hypothesisId === edge.target);
+    return (
+      <div className="grid gap-2">
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/65">
+          {evidence.code} · {evidence.status} · 可信度 {evidence.credibility.toFixed(2)}
+        </div>
+        {auditRows.map((row) => (
+          <div key={row.hypothesisId} className="grid gap-1 rounded-md border border-line bg-panel p-3 text-xs text-ink/65">
+            <div>
+              {row.hypothesisCode} · {row.beliefCode} · {row.proposition}
+            </div>
+            <div>
+              {row.direction} · 相关性 {row.relevance.toFixed(2)} · LR {row.likelihoodRatio.toFixed(2)} · 置信度 {row.confidence.toFixed(2)}
+            </div>
+            <div>{row.rationale}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const rows = createEvidenceEdgeEditorRows(editor, evidence.id, edge.target);
+  const selectedRow = rows.find((row) => row.selected);
+  if (!selectedRow) return <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">关系已不存在</div>;
+
+  const siblingRows = rows.filter((row) => !row.selected);
+
+  return (
+    <div className="grid gap-3">
+      <form action={updateEvidenceAction} className="grid gap-3">
+        <ReturnPathField returnPath={returnPath} />
+        <input type="hidden" name="evidenceId" value={evidence.id} />
+        <input type="hidden" name="title" value={evidence.title} />
+        <input type="hidden" name="url" value={evidence.url ?? ""} />
+        <input type="hidden" name="credibility" value={evidence.credibility} />
+        <input type="hidden" name="content" value={evidence.content} />
+        {siblingRows.map((row) => (
+          <HiddenEvidenceLinkFields key={row.hypothesisId} row={row} />
+        ))}
+        <input type="hidden" name="linkHypothesisIds" value={selectedRow.hypothesisId} />
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/70">
+          {evidence.code} · {selectedRow.hypothesisCode} · {selectedRow.proposition}
+        </div>
+        <Select
+          label="方向"
+          name={`direction:${selectedRow.hypothesisId}`}
+          defaultValue={selectedRow.direction}
+          options={Object.entries(evidenceDirectionLabels).map(([value, label]) => ({ value, label }))}
+        />
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Field
+            label="相关性"
+            name={`relevance:${selectedRow.hypothesisId}`}
+            type="number"
+            step="0.01"
+            min="0"
+            max="1"
+            defaultValue={selectedRow.relevance}
+          />
+          <Field
+            label="似然比"
+            name={`likelihoodRatio:${selectedRow.hypothesisId}`}
+            type="number"
+            step="0.01"
+            min="0.01"
+            defaultValue={selectedRow.likelihoodRatio}
+          />
+          <Field
+            label="置信度"
+            name={`confidence:${selectedRow.hypothesisId}`}
+            type="number"
+            step="0.01"
+            min="0"
+            max="1"
+            defaultValue={selectedRow.confidence}
+          />
+        </div>
+        <TextArea label="解释" name={`rationale:${selectedRow.hypothesisId}`} defaultValue={selectedRow.rationale} />
+        <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">保存关系并重算</button>
+      </form>
+      <form action={disconnectEvidenceHypothesisAction} className="border-t border-line pt-3" data-evidence-edge-disconnect="true">
+        <ReturnPathField returnPath={returnPath} />
+        <input type="hidden" name="evidenceId" value={evidence.id} />
+        <input type="hidden" name="hypothesisId" value={selectedRow.hypothesisId} />
+        <button className="min-h-9 w-full rounded-md border border-berry px-3 text-sm font-semibold text-berry">断开关系并重算</button>
+      </form>
+    </div>
+  );
+}
+
+function CandidateEdgeEditor({
+  editor,
+  edge,
+  returnPath
+}: {
+  editor: WorldModelGraphEditorData;
+  edge: WorldModelGraph["edges"][number];
+  returnPath?: string;
+}) {
+  const observation = editor.observations.find((item) => item.id === edge.source);
+  const hypothesis = editor.hypotheses.find((item) => item.id === edge.target);
+  if (!observation || !hypothesis) {
+    return <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">候选关系已不存在</div>;
+  }
+  const linkRows = createObservationConnectionEditorRows(editor, observation.id, hypothesis.id);
+  if (linkRows.length === 0) {
+    return <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">没有当前有效假设可确认</div>;
+  }
+  return (
+    <form action={connectObservationHypothesisAction} className="grid gap-3">
+      <ReturnPathField returnPath={returnPath} />
+      <input type="hidden" name="observationId" value={observation.id} />
+      <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/70">
+        {observation.code} · {hypothesis.code}
+      </div>
+      {linkRows.map((row) => (
+        <div key={row.hypothesisId} className="grid gap-2 rounded-md border border-line bg-panel p-3">
+          <label className="flex items-start gap-2 text-sm text-ink/75">
+            <input name="linkHypothesisIds" value={row.hypothesisId} type="checkbox" defaultChecked={row.checked} className="mt-1" />
+            <span>
+              <span className="font-mono text-xs">{row.hypothesisCode}</span>
+              <span className="ml-2">{row.beliefCode} · {row.beliefTitle} · {row.proposition}</span>
+            </span>
+          </label>
+          <Select
+            label="方向"
+            name={`direction:${row.hypothesisId}`}
+            defaultValue={row.direction}
+            options={Object.entries(evidenceDirectionLabels).map(([value, label]) => ({ value, label }))}
+          />
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Field label="相关性" name={`relevance:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.relevance} />
+            <Field label="似然比" name={`likelihoodRatio:${row.hypothesisId}`} type="number" step="0.01" min="0.01" defaultValue={row.likelihoodRatio} />
+            <Field label="置信度" name={`confidence:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.confidence} />
+          </div>
+          <TextArea label="解释" name={`rationale:${row.hypothesisId}`} defaultValue={row.rationale} required />
+        </div>
+      ))}
+      <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">确认为证据并更新</button>
     </form>
   );
 }
 
-function ConnectionEditor({ editor, connection }: { editor: WorldModelGraphEditorData; connection: PendingConnection }) {
+function SourceObservationAssignmentEditor({
+  editor,
+  sourceId,
+  observationId,
+  returnPath
+}: {
+  editor: WorldModelGraphEditorData;
+  sourceId: string;
+  observationId: string;
+  returnPath?: string;
+}) {
+  const source = editor.sources.find((item) => item.id === sourceId);
+  const observation = editor.observations.find((item) => item.id === observationId);
+  if (!source || !observation) return null;
+  return (
+    <form action={connectSourceObservationAction} className="grid gap-3">
+      <ReturnPathField returnPath={returnPath} />
+      <input type="hidden" name="sourceId" value={source.id} />
+      <input type="hidden" name="observationId" value={observation.id} />
+      <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/70">
+        将 {observation.code} 归属到 {source.code}
+      </div>
+      <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">保存观察来源</button>
+    </form>
+  );
+}
+
+export function GraphEdgeEditor({
+  editor,
+  edge,
+  nodeById,
+  returnPath
+}: {
+  editor: WorldModelGraphEditorData;
+  edge: WorldModelGraph["edges"][number];
+  nodeById: Map<string, WorldModelGraphNode>;
+  returnPath?: string;
+}) {
+  const source = nodeById.get(edge.source);
+  const target = nodeById.get(edge.target);
+  return (
+    <div className="grid gap-3">
+      <div>
+        <div className="text-xs font-medium text-ink/50">{edge.relation}</div>
+        <h3 className="text-sm font-semibold text-ink">
+          {source?.code ?? edge.source} {"->"} {target?.code ?? edge.target}
+        </h3>
+      </div>
+      <div className="rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink/65">{edge.label}</div>
+      {edge.relation === "COLLECTED" ? (
+        <SourceObservationAssignmentEditor editor={editor} sourceId={edge.source} observationId={edge.target} returnPath={returnPath} />
+      ) : null}
+      {edge.relation === "CONFIRMED_AS" ? <EvidenceEditor editor={editor} evidenceId={edge.target} returnPath={returnPath} /> : null}
+      {edge.relation === "INFLUENCES" ? <EvidenceEdgeEditor editor={editor} edge={edge} returnPath={returnPath} /> : null}
+      {edge.relation === "CANDIDATE" ? <CandidateEdgeEditor editor={editor} edge={edge} returnPath={returnPath} /> : null}
+      {edge.relation === "UPDATED" ? <UpdateEditor editor={editor} updateId={edge.source} returnPath={returnPath} /> : null}
+      {edge.relation === "PRODUCED" ? <UpdateEditor editor={editor} updateId={edge.target} returnPath={returnPath} /> : null}
+      {edge.relation === "OWNS" ? (
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">选择信念或假设节点可编辑结构字段。</div>
+      ) : null}
+    </div>
+  );
+}
+
+export function ConnectionEditor({
+  editor,
+  connection,
+  returnPath
+}: {
+  editor: WorldModelGraphEditorData;
+  connection: PendingConnection;
+  returnPath?: string;
+}) {
   const intent = connectionIntent(connection);
   if (intent.kind === "moveHypothesis") {
     const hypothesis = editor.hypotheses.find((item) => item.id === intent.hypothesisId);
@@ -397,10 +972,12 @@ function ConnectionEditor({ editor, connection }: { editor: WorldModelGraphEdito
     if (!hypothesis || !belief) return null;
     return (
       <form action={updateHypothesisAction} className="grid gap-3">
+        <ReturnPathField returnPath={returnPath} />
         <input type="hidden" name="hypothesisId" value={hypothesis.id} />
         <input type="hidden" name="beliefId" value={belief.id} />
         <input type="hidden" name="proposition" value={hypothesis.proposition} />
         <input type="hidden" name="notes" value={hypothesis.notes} />
+        <input type="hidden" name="evidenceSearchQuery" value={hypothesis.evidenceSearchQuery ?? ""} />
         <input type="hidden" name="stance" value={hypothesis.stance} />
         <input type="hidden" name="priorProbability" value={hypothesis.priorProbability} />
         <input type="hidden" name="currentProbability" value={hypothesis.currentProbability} />
@@ -419,6 +996,7 @@ function ConnectionEditor({ editor, connection }: { editor: WorldModelGraphEdito
     if (!evidence || !hypothesis) return null;
     return (
       <form action={connectEvidenceHypothesisAction} className="grid gap-3">
+        <ReturnPathField returnPath={returnPath} />
         <input type="hidden" name="evidenceId" value={evidence.id} />
         <input type="hidden" name="hypothesisId" value={hypothesis.id} />
         <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/70">
@@ -439,18 +1017,77 @@ function ConnectionEditor({ editor, connection }: { editor: WorldModelGraphEdito
     );
   }
 
+  if (intent.kind === "assignSource") {
+    return (
+      <SourceObservationAssignmentEditor
+        editor={editor}
+        sourceId={intent.sourceId}
+        observationId={intent.observationId}
+        returnPath={returnPath}
+      />
+    );
+  }
+
+  if (intent.kind === "confirmObservation") {
+    const observation = editor.observations.find((item) => item.id === intent.observationId);
+    const hypothesis = editor.hypotheses.find((item) => item.id === intent.hypothesisId);
+    if (!observation || !hypothesis) return null;
+    const linkRows = createObservationConnectionEditorRows(editor, observation.id, hypothesis.id);
+    if (linkRows.length === 0) {
+      return <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/55">没有当前有效假设可确认</div>;
+    }
+    return (
+      <form action={connectObservationHypothesisAction} className="grid gap-3">
+        <ReturnPathField returnPath={returnPath} />
+        <input type="hidden" name="observationId" value={observation.id} />
+        <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink/70">
+          {observation.code} 连接到 {hypothesis.code}
+        </div>
+        <div className="grid gap-3 border-t border-line pt-3">
+          <div className="text-xs font-medium text-ink/65">观察-假设候选关联</div>
+          {linkRows.map((row) => (
+            <div key={row.hypothesisId} className="grid gap-2 rounded-md border border-line bg-panel p-3">
+              <label className="flex items-start gap-2 text-sm text-ink/75">
+                <input name="linkHypothesisIds" value={row.hypothesisId} type="checkbox" defaultChecked={row.checked} className="mt-1" />
+                <span>
+                  <span className="font-mono text-xs">{row.hypothesisCode}</span>
+                  <span className="ml-2">{row.beliefCode} · {row.beliefTitle} · {row.proposition}</span>
+                </span>
+              </label>
+              <Select
+                label="方向"
+                name={`direction:${row.hypothesisId}`}
+                defaultValue={row.direction}
+                options={Object.entries(evidenceDirectionLabels).map(([value, label]) => ({ value, label }))}
+              />
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Field label="相关性" name={`relevance:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.relevance} />
+                <Field label="似然比" name={`likelihoodRatio:${row.hypothesisId}`} type="number" step="0.01" min="0.01" defaultValue={row.likelihoodRatio} />
+                <Field label="置信度" name={`confidence:${row.hypothesisId}`} type="number" step="0.01" min="0" max="1" defaultValue={row.confidence} />
+              </div>
+              <TextArea label="解释" name={`rationale:${row.hypothesisId}`} defaultValue={row.rationale} required />
+            </div>
+          ))}
+        </div>
+        <button className="min-h-9 rounded-md bg-moss px-3 text-sm font-semibold text-white">确认为证据并更新</button>
+      </form>
+    );
+  }
+
   return <div className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-berry">该连接没有可保存的业务含义。</div>;
 }
 
 function NodeEditor({
   editor,
-  selectedNode
+  selectedNode,
+  returnPath
 }: {
   editor: WorldModelGraphEditorData;
   selectedNode?: WorldModelGraphNode;
+  returnPath?: string;
 }) {
   if (!selectedNode) {
-    return <div className="text-sm text-ink/55">选择一个节点后可编辑；从节点拖出连线可创建关系。</div>;
+    return <div className="text-sm text-ink/55">未选择节点</div>;
   }
 
   return (
@@ -461,10 +1098,12 @@ function NodeEditor({
           {selectedNode.code} · {selectedNode.label}
         </h3>
       </div>
-      {selectedNode.type === "belief" ? <BeliefEditor editor={editor} beliefId={selectedNode.id} /> : null}
-      {selectedNode.type === "hypothesis" ? <HypothesisEditor editor={editor} hypothesisId={selectedNode.id} /> : null}
-      {selectedNode.type === "evidence" ? <EvidenceEditor editor={editor} evidenceId={selectedNode.id} /> : null}
-      {selectedNode.type === "update" ? <UpdateEditor editor={editor} updateId={selectedNode.id} /> : null}
+      {selectedNode.type === "source" ? <SourceEditor editor={editor} sourceId={selectedNode.id} returnPath={returnPath} /> : null}
+      {selectedNode.type === "belief" ? <BeliefEditor editor={editor} beliefId={selectedNode.id} returnPath={returnPath} /> : null}
+      {selectedNode.type === "hypothesis" ? <HypothesisEditor editor={editor} hypothesisId={selectedNode.id} returnPath={returnPath} /> : null}
+      {selectedNode.type === "observation" ? <ObservationEditor editor={editor} observationId={selectedNode.id} returnPath={returnPath} /> : null}
+      {selectedNode.type === "evidence" ? <EvidenceEditor editor={editor} evidenceId={selectedNode.id} returnPath={returnPath} /> : null}
+      {selectedNode.type === "update" ? <UpdateEditor editor={editor} updateId={selectedNode.id} returnPath={returnPath} /> : null}
     </div>
   );
 }
@@ -472,41 +1111,73 @@ function NodeEditor({
 export function WorldModelGraphView({
   graph,
   editor,
-  mode = "embedded"
+  mode = "embedded",
+  returnPath,
+  initialSelection
 }: {
   graph: WorldModelGraph;
   editor?: WorldModelGraphEditorData;
   mode?: WorldModelGraphViewMode;
+  returnPath?: string;
+  initialSelection?: WorldModelGraphInitialSelection;
 }) {
-  const storageKey = useMemo(() => layoutStorageKey(graph), [graph]);
   const nodeIdMap = useMemo(() => createFlowNodeIdMap(graph.nodes), [graph.nodes]);
   const initialNodes = useMemo(() => createFlowNodes(graph.nodes, nodeIdMap), [graph.nodes, nodeIdMap]);
   const [nodes, setNodes] = useState<Node<FlowData>[]>(initialNodes);
-  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FlowData>, Edge> | null>(null);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FlowData>, Edge<FlowEdgeData>> | null>(null);
   const edges = useMemo(() => createFlowEdges(graph.edges, nodeIdMap), [graph.edges, nodeIdMap]);
   const nodeByCode = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const graphEdgeById = useMemo(() => new Map(graph.edges.map((edge) => [edge.id, edge])), [graph.edges]);
+  const initialSelectionNodeCandidate = initialSelection?.nodeId;
+  const initialSelectionNodeId = useMemo(
+    () => createGraphInitialSelection(graph.nodes, { nodeId: initialSelectionNodeCandidate }, graph.edges).nodeId,
+    [graph.edges, graph.nodes, initialSelectionNodeCandidate]
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(initialSelectionNodeId);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null);
   const [embeddedPanActivated, setEmbeddedPanActivated] = useState(false);
+  const visibleNodes = useMemo<Node<FlowData>[]>(
+    () =>
+      nodes.map((node) => {
+        const selected = node.data.domainId === selectedNodeId;
+        return {
+          ...node,
+          selected,
+          style: createGraphNodeVisualStyle(node.style ?? {}, selected)
+        };
+      }),
+    [nodes, selectedNodeId]
+  );
   const interactionOptions = useMemo(
     () => createGraphInteractionOptions({ mode, panActivated: embeddedPanActivated }),
     [embeddedPanActivated, mode]
   );
+  const viewportOptions = useMemo(
+    () => createGraphViewportOptions({ mode, nodeCount: graph.nodes.length }),
+    [graph.nodes.length, mode]
+  );
 
   useEffect(() => {
-    setNodes(mergeSavedPositions(initialNodes, storageKey));
-  }, [initialNodes, storageKey]);
+    setNodes(mergeSavedPositions(initialNodes));
+  }, [initialNodes]);
+
+  useEffect(() => {
+    setSelectedNodeId(initialSelectionNodeId);
+    setSelectedEdgeId(null);
+    setPendingConnection(null);
+  }, [initialSelectionNodeId]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<FlowData>>[]) => {
       setNodes((current) => {
         const next = applyNodeChanges(changes, current);
-        savePositions(next, storageKey);
+        savePositions(next);
         return next;
       });
     },
-    [storageKey]
+    []
   );
 
   const onConnect = useCallback(
@@ -523,6 +1194,7 @@ export function WorldModelGraphView({
         targetType: target.data.type
       });
       setSelectedNodeId(null);
+      setSelectedEdgeId(null);
     },
     [nodeByCode]
   );
@@ -532,6 +1204,7 @@ export function WorldModelGraphView({
   }
 
   const selectedNode = selectedNodeId ? graphNodeById.get(selectedNodeId) : undefined;
+  const selectedEdge = selectedEdgeId ? graphEdgeById.get(selectedEdgeId) : undefined;
   const canvasHeightClass = mode === "workspace" ? "h-[calc(100vh-150px)] min-h-[640px]" : "h-[560px]";
   const asideHeightClass = mode === "workspace" ? "h-[calc(100vh-150px)] min-h-[640px] overflow-y-auto" : "";
   const rootClass = mode === "workspace" ? "grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]" : "grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]";
@@ -548,10 +1221,12 @@ export function WorldModelGraphView({
           if (mode === "embedded") setEmbeddedPanActivated(false);
         }}
       >
-        <ReactFlow
-          nodes={nodes}
+        <ReactFlow<Node<FlowData>, Edge<FlowEdgeData>>
+          nodes={visibleNodes}
           edges={edges}
-          fitView
+          fitView={viewportOptions.fitView}
+          fitViewOptions={viewportOptions.fitView ? viewportOptions.fitViewOptions : undefined}
+          defaultViewport={!viewportOptions.fitView ? viewportOptions.defaultViewport : undefined}
           minZoom={0.25}
           maxZoom={1.4}
           onInit={(instance) => setFlowInstance(instance)}
@@ -559,6 +1234,12 @@ export function WorldModelGraphView({
           onConnect={onConnect}
           onNodeClick={(_, node) => {
             setSelectedNodeId(node.data.domainId);
+            setSelectedEdgeId(null);
+            setPendingConnection(null);
+          }}
+          onEdgeClick={(_, edge) => {
+            setSelectedEdgeId(edge.data?.edgeId ?? null);
+            setSelectedNodeId(null);
             setPendingConnection(null);
           }}
           nodesDraggable
@@ -583,8 +1264,11 @@ export function WorldModelGraphView({
             </GraphToolButton>
           </div>
         </div>
-        {editor && pendingConnection ? <ConnectionEditor editor={editor} connection={pendingConnection} /> : null}
-        {editor && !pendingConnection ? <NodeEditor editor={editor} selectedNode={selectedNode} /> : null}
+        {editor && pendingConnection ? <ConnectionEditor editor={editor} connection={pendingConnection} returnPath={returnPath} /> : null}
+        {editor && !pendingConnection && selectedEdge ? (
+          <GraphEdgeEditor editor={editor} edge={selectedEdge} nodeById={graphNodeById} returnPath={returnPath} />
+        ) : null}
+        {editor && !pendingConnection && !selectedEdge ? <NodeEditor editor={editor} selectedNode={selectedNode} returnPath={returnPath} /> : null}
         {!editor ? <div className="text-sm text-ink/55">当前图谱未提供可编辑数据。</div> : null}
       </aside>
     </div>

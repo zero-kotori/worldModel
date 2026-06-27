@@ -1,0 +1,1 @@
+ALTER TYPE "EvidenceStatus" ADD VALUE 'DELETED';

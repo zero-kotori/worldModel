@@ -55,6 +55,14 @@ function cloneEvidence(record: EvidenceRecord): EvidenceRecord {
   };
 }
 
+function cloneLikelihoodRun(record: LikelihoodRunRecord): LikelihoodRunRecord {
+  return {
+    ...record,
+    estimatorOutputs: record.estimatorOutputs.map((output) => ({ ...output })),
+    createdAt: new Date(record.createdAt)
+  };
+}
+
 function cloneAutomationHeartbeat(record: AutomationHeartbeatRecord): AutomationHeartbeatRecord {
   return {
     ...record,
@@ -68,6 +76,8 @@ function cloneAutomationHeartbeat(record: AutomationHeartbeatRecord): Automation
 function cloneAutomationWorkerConfig(record: AutomationWorkerConfigRecord): AutomationWorkerConfigRecord {
   return {
     ...record,
+    beliefIds: record.beliefIds ? [...record.beliefIds] : undefined,
+    sourceIds: record.sourceIds ? [...record.sourceIds] : undefined,
     createdAt: new Date(record.createdAt),
     updatedAt: new Date(record.updatedAt)
   };
@@ -119,11 +129,14 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
       if (!targetBelief) throw new Error(`Belief not found: ${targetBeliefId}`);
       const startsAt = patch.startsAt === null ? undefined : (patch.startsAt ?? existing.startsAt);
       const expiresAt = patch.expiresAt === null ? undefined : (patch.expiresAt ?? existing.expiresAt);
+      const definedPatch = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+      const currentProbability = patch.currentProbability ?? existing.currentProbability;
       const updated = cloneHypothesis({
         ...existing,
-        ...patch,
+        ...definedPatch,
         beliefId: targetBeliefId,
-        strength: patch.currentProbability ?? existing.strength,
+        currentProbability,
+        strength: currentProbability,
         startsAt,
         expiresAt,
         updatedAt: patch.updatedAt
@@ -204,7 +217,10 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
     },
     async createLikelihoodRun(input) {
       likelihoodRuns.push(input);
-      return { ...input, createdAt: new Date(input.createdAt) };
+      return cloneLikelihoodRun(input);
+    },
+    async listLikelihoodRuns() {
+      return likelihoodRuns.map(cloneLikelihoodRun).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     },
     async createUpdateEvent(input) {
       updateEvents.push(input);
@@ -234,6 +250,12 @@ export function createInMemoryWorldModelStore(): WorldModelStore {
     async createSource(input) {
       sources.push(input);
       return { ...input, createdAt: new Date(input.createdAt), updatedAt: new Date(input.updatedAt) };
+    },
+    async updateSource(id, patch) {
+      const index = sources.findIndex((item) => item.id === id);
+      if (index === -1) throw new Error(`Source not found: ${id}`);
+      sources[index] = { ...sources[index], ...patch, updatedAt: patch.updatedAt };
+      return { ...sources[index], createdAt: new Date(sources[index].createdAt), updatedAt: new Date(sources[index].updatedAt) };
     },
     async listSources() {
       return sources.map((source) => ({

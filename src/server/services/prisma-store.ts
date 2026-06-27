@@ -51,6 +51,11 @@ function estimatorOutputs(value: Prisma.JsonValue): EstimatorOutput[] {
   return Array.isArray(value) ? (value as EstimatorOutput[]) : [];
 }
 
+function stringArray(value: Prisma.JsonValue): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
 function evidenceLoopQueries(value: Prisma.JsonValue | null): EvidenceLoopQuery[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is EvidenceLoopQuery => {
@@ -71,6 +76,7 @@ function toHypothesisRecord(record: Hypothesis): HypothesisRecord {
     beliefId: record.beliefId,
     proposition: record.proposition,
     notes: record.notes,
+    evidenceSearchQuery: record.evidenceSearchQuery,
     stance: record.stance,
     priorProbability: record.priorProbability,
     currentProbability: record.currentProbability,
@@ -163,12 +169,13 @@ function toUpdateEventRecord(record: BayesianUpdateEvent): BayesianUpdateEventRe
     beliefId: record.beliefId,
     evidenceId: record.evidenceId,
     likelihoodRunId: record.likelihoodRunId ?? undefined,
+    likelihoodRunIds: record.likelihoodRunIds,
     priorSnapshot: probabilitySnapshot(record.priorSnapshot),
     posteriorSnapshot: probabilitySnapshot(record.posteriorSnapshot),
     mode: "APPLIED",
     status: record.status,
-    confidence: 0,
-    explanations: [],
+    confidence: record.confidence,
+    explanations: stringArray(record.explanations),
     createdAt: record.createdAt,
     rolledBackAt: record.rolledBackAt ?? undefined
   };
@@ -199,10 +206,13 @@ function toObservationRunRecord(record: ObservationRun): ObservationRunRecord {
     startedAt: record.startedAt,
     finishedAt: record.finishedAt ?? undefined,
     itemCount: record.itemCount,
+    reprocessedObservationCount: record.reprocessedObservationCount,
     deduplicatedCount: record.deduplicatedCount,
     candidateCount: record.candidateCount,
     autoAppliedCount: record.autoAppliedCount,
     reviewCount: record.reviewCount,
+    lowImpactCount: record.lowImpactCount,
+    unmatchedCount: record.unmatchedCount,
     queryCount: record.queryCount,
     querySummary: evidenceLoopQueries(record.querySummary),
     errorMessage: record.errorMessage ?? undefined
@@ -217,6 +227,7 @@ function toAutomationHeartbeatRecord(record: AutomationHeartbeat): AutomationHea
     nextRunAt: record.nextRunAt ?? undefined,
     intervalMs: record.intervalMs,
     consecutiveFailureCount: record.consecutiveFailureCount,
+    lastNotice: record.lastNotice,
     lastError: record.lastError,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
@@ -231,6 +242,10 @@ function toAutomationWorkerConfigRecord(record: AutomationWorkerConfig): Automat
     failureBackoffMultiplier: record.failureBackoffMultiplier,
     maxIntervalMs: record.maxIntervalMs,
     reviewOnly: record.reviewOnly,
+    maxQueries: record.maxQueries ?? undefined,
+    maxSources: record.maxSources ?? undefined,
+    beliefIds: record.beliefIds?.length ? [...record.beliefIds] : undefined,
+    sourceIds: record.sourceIds?.length ? [...record.sourceIds] : undefined,
     maxObservations: record.maxObservations ?? undefined,
     candidateThreshold: record.candidateThreshold ?? undefined,
     autoConfirmThreshold: record.autoConfirmThreshold ?? undefined,
@@ -272,6 +287,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
               id: hypothesis.id,
               proposition: hypothesis.proposition,
               notes: hypothesis.notes,
+              evidenceSearchQuery: hypothesis.evidenceSearchQuery ?? "",
               stance: hypothesis.stance,
               priorProbability: hypothesis.priorProbability,
               currentProbability: hypothesis.currentProbability,
@@ -311,6 +327,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           beliefId: input.beliefId,
           proposition: input.proposition,
           notes: input.notes,
+          evidenceSearchQuery: input.evidenceSearchQuery ?? "",
           stance: input.stance,
           priorProbability: input.priorProbability,
           currentProbability: input.currentProbability,
@@ -337,6 +354,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
             beliefId: patch.beliefId,
             proposition: patch.proposition,
             notes: patch.notes,
+            evidenceSearchQuery: patch.evidenceSearchQuery,
             stance: patch.stance,
             priorProbability: patch.priorProbability,
             currentProbability: patch.currentProbability,
@@ -345,6 +363,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
             startsAt: patch.startsAt,
             expiresAt: patch.expiresAt,
             expiryCondition: patch.expiryCondition,
+            resolvedOutcome: patch.resolvedOutcome,
             updatedAt: patch.updatedAt
           }
         });
@@ -487,6 +506,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
             content: patch.content,
             url: patch.url,
             confirmationMode: patch.confirmationMode,
+            confirmedAt: patch.confirmedAt,
             credibility: patch.credibility,
             status: patch.status,
             metadata: patch.metadata as Prisma.InputJsonValue | undefined,
@@ -525,6 +545,10 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
       });
       return toLikelihoodRunRecord(record);
     },
+    async listLikelihoodRuns() {
+      const records = await prisma.likelihoodRun.findMany({ orderBy: { createdAt: "desc" } });
+      return records.map(toLikelihoodRunRecord);
+    },
     async createUpdateEvent(input) {
       const record = await prisma.bayesianUpdateEvent.create({
         data: {
@@ -532,8 +556,11 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           beliefId: input.beliefId,
           evidenceId: input.evidenceId,
           likelihoodRunId: input.likelihoodRunId,
+          likelihoodRunIds: input.likelihoodRunIds ?? (input.likelihoodRunId ? [input.likelihoodRunId] : []),
           priorSnapshot: input.priorSnapshot as Prisma.InputJsonValue,
           posteriorSnapshot: input.posteriorSnapshot as Prisma.InputJsonValue,
+          confidence: input.confidence,
+          explanations: input.explanations as Prisma.InputJsonValue,
           mode: input.mode,
           status: input.status,
           createdAt: input.createdAt,
@@ -554,6 +581,11 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
       const record = await prisma.bayesianUpdateEvent.update({
         where: { id },
         data: {
+          priorSnapshot: patch.priorSnapshot as Prisma.InputJsonValue | undefined,
+          posteriorSnapshot: patch.posteriorSnapshot as Prisma.InputJsonValue | undefined,
+          confidence: patch.confidence,
+          explanations: patch.explanations as Prisma.InputJsonValue | undefined,
+          likelihoodRunIds: patch.likelihoodRunIds,
           status: patch.status,
           rolledBackAt: patch.rolledBackAt
         }
@@ -579,6 +611,24 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
       });
       return toSourceRecord(record);
     },
+    async updateSource(id, patch) {
+      const record = await prisma.observationSource.update({
+        where: { id },
+        data: {
+          name: patch.name,
+          kind: patch.kind,
+          url: patch.url,
+          adapter: patch.adapter,
+          credentialRef: patch.credentialRef,
+          credibility: patch.credibility,
+          enabled: patch.enabled,
+          autoConfirm: patch.autoConfirm,
+          autoConfirmThreshold: patch.autoConfirmThreshold,
+          updatedAt: patch.updatedAt
+        }
+      });
+      return toSourceRecord(record);
+    },
     async listSources() {
       const records = await prisma.observationSource.findMany({ orderBy: { updatedAt: "desc" } });
       return records.map(toSourceRecord);
@@ -596,10 +646,13 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           startedAt: input.startedAt,
           finishedAt: input.finishedAt,
           itemCount: input.itemCount,
+          reprocessedObservationCount: input.reprocessedObservationCount,
           deduplicatedCount: input.deduplicatedCount,
           candidateCount: input.candidateCount,
           autoAppliedCount: input.autoAppliedCount,
           reviewCount: input.reviewCount,
+          lowImpactCount: input.lowImpactCount,
+          unmatchedCount: input.unmatchedCount,
           queryCount: input.queryCount,
           querySummary: input.querySummary as Prisma.InputJsonValue,
           errorMessage: input.errorMessage
@@ -620,6 +673,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           nextRunAt: input.nextRunAt,
           intervalMs: input.intervalMs,
           consecutiveFailureCount: input.consecutiveFailureCount,
+          lastNotice: input.lastNotice,
           lastError: input.lastError,
           updatedAt: input.updatedAt
         },
@@ -630,6 +684,7 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           nextRunAt: input.nextRunAt,
           intervalMs: input.intervalMs,
           consecutiveFailureCount: input.consecutiveFailureCount,
+          lastNotice: input.lastNotice,
           lastError: input.lastError,
           createdAt: input.createdAt,
           updatedAt: input.updatedAt
@@ -650,6 +705,10 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           failureBackoffMultiplier: input.failureBackoffMultiplier,
           maxIntervalMs: input.maxIntervalMs,
           reviewOnly: input.reviewOnly,
+          maxQueries: input.maxQueries,
+          maxSources: input.maxSources,
+          beliefIds: input.beliefIds ?? [],
+          sourceIds: input.sourceIds ?? [],
           maxObservations: input.maxObservations,
           candidateThreshold: input.candidateThreshold,
           autoConfirmThreshold: input.autoConfirmThreshold,
@@ -664,6 +723,10 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           failureBackoffMultiplier: input.failureBackoffMultiplier,
           maxIntervalMs: input.maxIntervalMs,
           reviewOnly: input.reviewOnly,
+          maxQueries: input.maxQueries,
+          maxSources: input.maxSources,
+          beliefIds: input.beliefIds ?? [],
+          sourceIds: input.sourceIds ?? [],
           maxObservations: input.maxObservations,
           candidateThreshold: input.candidateThreshold,
           autoConfirmThreshold: input.autoConfirmThreshold,

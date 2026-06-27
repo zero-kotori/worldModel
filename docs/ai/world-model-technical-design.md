@@ -120,6 +120,8 @@ LLM_MODEL=""
 MODEL_ARTIFACT_DIR="./model-artifacts"
 ```
 
+If `LLM_PROVIDER` is omitted, the app uses DeepSeek as the v1 LLM scorer. In that default mode, `LLM_API_KEY` is the only required LLM credential; `LLM_BASE_URL` defaults to `https://api.deepseek.com` and `LLM_MODEL` defaults to `deepseek-chat`.
+
 `myWeb` 需要：
 
 ```env
@@ -422,7 +424,27 @@ type DuplicateDecision = {
 3. 语义 key 匹配且发布时间接近。
 4. 无重复。
 
-疑似重复观察进入 `DUPLICATE` 状态，不直接删除。
+疑似重复观察进入 `DUPLICATE` 状态，不直接删除。后台观察页展示重复候选和原始观察编号，支持单条拒绝和批量拒绝，操作完成后返回重复候选队列上下文。
+
+### 6.5 来源质量校准建议
+
+来源质量由该来源产生的证据历史反向计算：
+
+- 证据状态为 `REJECTED` 或 `DELETED` 计为问题证据。
+- 已生成 `ROLLED_BACK` 更新事件的证据计为问题证据。
+- 同一条证据同时被拒绝和回滚时只计一次问题证据。
+
+当某来源至少有 2 条证据，且存在问题证据时，系统给出人工校准建议：
+
+```text
+problemRate = problemEvidenceCount / evidenceCount
+targetCredibility = round2(1 - problemRate * 0.7)
+targetAutoConfirmThreshold = round2(0.85 + problemRate * 0.1)
+suggestedCredibility = min(currentCredibility, targetCredibility)
+suggestedAutoConfirmThreshold = max(currentAutoConfirmThreshold, targetAutoConfirmThreshold)
+```
+
+v1 在总览诊断和来源配置页面展示建议，不自动写回来源配置。来源配置页提供“应用建议”操作，该操作只调用来源更新服务写入 `credibility` 和 `autoConfirmThreshold`，不覆盖其他来源字段。校准目标由问题率决定；如果来源当前参数已经达到目标或更保守，页面只显示已达到建议，不再提供重复应用按钮。
 
 ## 7. 服务层设计
 
@@ -438,6 +460,7 @@ type DuplicateDecision = {
   - 写入观察。
   - 执行去重。
   - 标记未知、重复、拒绝或确认。
+  - 将低影响观察保留在未知证据队列，支持单条或批量拒绝。
 - `evidence-service.ts`
   - 将观察确认为证据。
   - 建立证据和假设关联。
@@ -499,11 +522,11 @@ API 仅面向后台 UI 使用。
 - `/admin/world-model/beliefs`
   - 信念列表、创建表单、假设编辑、概率结构选择。
 - `/admin/world-model/observations`
-  - 观察池、重复候选、未知证据、确认和拒绝操作。
+  - 观察池、重复候选、未知证据、确认和拒绝操作；重复候选可链接原始观察并批量拒绝，低影响未知观察可批量拒绝。
 - `/admin/world-model/evidence`
   - 证据库、假设关联、更新预览、应用更新。
 - `/admin/world-model/sources`
-  - 来源配置、可信度、adapter、自动确认阈值、手动运行。
+  - 来源配置、可信度、adapter、自动确认阈值、证据质量反馈、一键应用校准建议和手动运行。
 - `/admin/world-model/models`
   - 模型版本、estimator 权重、模型健康状态、产物导入。
 
@@ -611,6 +634,7 @@ npm run model:import
 - GDELT。
 - GH Archive。
 - Hugging Face Hub。
+- Manifold resolved binary markets。
 
 如果服务器算力不足，训练脚本应可以在用户本地电脑运行，产出文件再复制到服务器并通过 `model:import` 注册。
 

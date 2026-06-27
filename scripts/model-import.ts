@@ -1,55 +1,49 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { config } from "dotenv";
 import { createPrismaWorldModelStore } from "@/server/services/prisma-store";
 import { createWorldModelServices } from "@/server/services/world-model-services";
+import {
+  modelArtifactImportInput,
+  readModelArtifactImportInput,
+  resolveModelArtifactPath
+} from "@/server/training/model-artifact-import";
 
 config({ path: ".env.local" });
 config();
 
-const artifactPath = process.argv[2] ?? path.join(process.cwd(), "model-artifacts", "lightweight-local.json");
+export { modelArtifactImportInput, readModelArtifactImportInput, resolveModelArtifactPath };
 
-if (!existsSync(artifactPath)) {
-  console.log(
-    JSON.stringify(
-      {
-        imported: false,
-        path: artifactPath,
-        message: "Model artifact path does not exist yet; provide a local artifact path to register it."
-      },
-      null,
-      2
-    )
-  );
-  process.exit(0);
-}
+export async function runModelImportCommand(artifactPath = process.argv[2] ?? path.join(process.cwd(), "model-artifacts", "lightweight-local.json")) {
+  const resolvedPath = resolveModelArtifactPath(artifactPath);
+  if (!existsSync(resolvedPath)) {
+    return {
+      imported: false,
+      path: artifactPath,
+      message: "Model artifact path does not exist yet; provide a local artifact path to register it."
+    };
+  }
 
-async function main() {
-  const artifact = JSON.parse(readFileSync(artifactPath, "utf8")) as {
-    name?: string;
-    kind?: "LIGHTWEIGHT" | "LLM" | "DEEP_ADAPTER";
-    version?: string;
-    metrics?: Record<string, unknown>;
-  };
   const prisma = new PrismaClient();
   try {
     const services = createWorldModelServices(createPrismaWorldModelStore(prisma));
-    const record = await services.models.importArtifact({
-      name: artifact.name ?? path.basename(artifactPath, path.extname(artifactPath)),
-      kind: artifact.kind ?? "LIGHTWEIGHT",
-      version: artifact.version ?? "0.1.0",
-      path: path.relative(process.cwd(), artifactPath).replaceAll("\\", "/"),
-      metrics: artifact.metrics ?? {},
-      enabled: true
-    });
-    console.log(JSON.stringify({ imported: true, artifact: record }, null, 2));
+    const record = await services.models.importArtifact(await readModelArtifactImportInput(resolvedPath));
+    return { imported: true, artifact: record };
   } finally {
     await prisma.$disconnect();
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+async function main() {
+  const result = await runModelImportCommand();
+  console.log(JSON.stringify(result, null, 2));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

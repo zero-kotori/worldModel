@@ -22,8 +22,54 @@ export type DedupeOptions = {
   semanticWindowHours?: number;
 };
 
+const TRACKING_QUERY_PARAMS = new Set([
+  "fbclid",
+  "gclid",
+  "gbraid",
+  "igshid",
+  "mc_cid",
+  "mc_eid",
+  "ref",
+  "ref_src",
+  "wbraid"
+]);
+
 function timestampFor(observation: ObservationForDedupe) {
   return observation.publishedAt?.getTime() ?? observation.observedAt?.getTime() ?? 0;
+}
+
+function canonicalUrl(value?: string | null) {
+  const raw = value?.trim();
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    const url = new URL(raw);
+    const retainedParams = [...url.searchParams.entries()]
+      .filter(([key]) => {
+        const normalizedKey = key.toLowerCase();
+        return !normalizedKey.startsWith("utm_") && !TRACKING_QUERY_PARAMS.has(normalizedKey);
+      })
+      .sort(([leftKey, leftValue], [rightKey, rightValue]) => {
+        return leftKey.localeCompare(rightKey) || leftValue.localeCompare(rightValue);
+      });
+
+    url.hash = "";
+    url.hostname = url.hostname.toLowerCase();
+    url.search = "";
+    if (url.pathname.length > 1) {
+      url.pathname = url.pathname.replace(/\/+$/, "");
+    }
+
+    for (const [key, queryValue] of retainedParams) {
+      url.searchParams.append(key, queryValue);
+    }
+
+    return url.toString();
+  } catch {
+    return raw;
+  }
 }
 
 function withinSemanticWindow(candidate: ObservationForDedupe, existing: ObservationForDedupe, hours: number) {
@@ -47,8 +93,10 @@ export function deduplicateObservation(
   options: DedupeOptions = {}
 ): DuplicateDecision {
   const semanticWindowHours = options.semanticWindowHours ?? 24;
+  const candidateUrl = canonicalUrl(candidate.url);
   const urlDuplicate = existingObservations.find((observation) => {
-    return Boolean(candidate.url && observation.url && candidate.url === observation.url);
+    const observationUrl = canonicalUrl(observation.url);
+    return Boolean(candidateUrl && observationUrl && candidateUrl === observationUrl);
   });
 
   if (urlDuplicate?.id) {

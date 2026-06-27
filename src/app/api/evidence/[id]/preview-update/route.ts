@@ -8,7 +8,7 @@ export async function POST(_request: Request, context: RouteContext) {
     verifyApiRequest(_request);
     const { id } = await context.params;
     const services = getWorldModelServices();
-    return jsonOk(await services.updates.createPreview(id));
+    return jsonOk({ previews: await services.updates.createPreviews(id) });
   } catch (error) {
     return jsonError(error);
   }

@@ -4,7 +4,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "World Model",
-  description: "Private belief, evidence, and Bayesian update workspace."
+  description: "Private belief, evidence, and Bayesian update workspace.",
+  icons: {
+    icon: "/favicon.svg"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

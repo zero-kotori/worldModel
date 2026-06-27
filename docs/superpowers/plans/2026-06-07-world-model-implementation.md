@@ -168,54 +168,50 @@ The Bayesian update uses odds form for independent hypotheses and normalized pos
   - GDELT/news event streams.
   - prediction market APIs.
   - social platform adapters using CLI/cookie-based credentials where available.
-- [ ] Store adapter configuration in `ObservationSource`.
-- [ ] Store credentials only as `credentialRef`.
-- [ ] Add `npm run observe -- --dry-run` to fetch and deduplicate without writing evidence.
-- [ ] Add observation run logs for success, failure, item count, and duplicate count.
-- [ ] Keep all fetched items as observations until confirmation or allowed auto-confirm policy.
+- [x] Store adapter configuration in `ObservationSource`.
+- [x] Store credentials only as `credentialRef`.
+- [x] Add `npm run observe -- --dry-run` to fetch and deduplicate without writing evidence.
+- [x] Add observation run logs for success, failure, item count, and duplicate count.
+- [x] Keep all fetched items as observations until confirmation or allowed auto-confirm policy.
 
 ## Phase 7: Likelihood Models And Training
 
-- [ ] Define estimator interface in TypeScript:
+- [x] Define estimator interface in TypeScript:
   - input: evidence text, hypothesis proposition, category, source credibility, optional context.
   - output: likelihood ratio, confidence, rationale, model version, or abstain.
-- [ ] Implement explainable lightweight estimator using trained artifacts and transparent features.
-- [ ] Implement LLM estimator adapter with provider abstraction:
+- [x] Implement explainable lightweight fallback estimator using trained artifacts and transparent features.
+- [x] Implement LLM estimator adapter with provider abstraction:
   - DeepSeek.
   - OpenAI.
   - local OpenAI-compatible endpoint.
 - [ ] Implement external deep-model adapter that loads precomputed model artifacts or calls an internal endpoint.
-- [ ] Add Python data preparation scripts for public sources:
-  - FEVER and SciFact for claim/evidence relationships.
-  - Metaculus, Polymarket, and Manifold for forecast histories.
-  - GDELT for event/news signals.
-  - GH Archive and Hugging Face Hub for technical trend signals.
-- [ ] Add Python lightweight training script that exports versioned model artifacts.
-- [ ] Add model import command that registers artifacts in `ModelArtifact`.
+- [x] Add data preparation scripts for validated external samples and locally confirmed evidence links.
+- [x] Add Python lightweight training script that exports versioned model artifacts.
+- [x] Add model import command that registers artifacts in `ModelArtifact`.
 - [ ] If local server compute is insufficient, run training on the user's local computer and import exported artifacts.
 
 ## Phase 8: Acceptance And Verification
 
-- [ ] Unit checks:
+- [x] Unit checks:
   - Bayesian updates.
   - estimator ensemble.
   - deduplication.
   - source credibility discounting.
   - update rollback.
-- [ ] Integration checks:
+- [x] Integration checks:
   - full manual belief-to-update workflow.
   - observation source dry run.
   - observation confirmation.
   - multi-hypothesis evidence link.
   - model artifact import.
-  - signed proxy access.
-- [ ] Browser checks:
+  - worldModel-side signed proxy access.
+- [x] Browser checks:
   - desktop and mobile render of dashboard, beliefs, observations, evidence, sources, and models pages.
   - no blank pages.
   - no incoherent overlap in dense admin views.
 - [ ] Final commands before completion:
-  - in `/home/ubuntu/worldModel`: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run observe -- --dry-run`.
-  - in `/home/ubuntu/myWeb`: `npm run typecheck`, `npm run build`, and existing browser/acceptance checks if affected by proxy changes.
+  - in `D:\working\worldModel`: `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build`, `npm run observe -- --dry-run`.
+  - in `D:\working\myWeb`: `npm run typecheck`, `npm run build`, and existing browser/acceptance checks if affected by proxy changes.
 
 ## Risks And Mitigations
 
@@ -235,4 +231,3 @@ The Bayesian update uses odds form for independent hypotheses and normalized pos
 6. Add observation source runners and deduplication workflows.
 7. Add likelihood estimator ensemble and training artifact pipeline.
 8. Run full verification and document any remaining operational setup.
-

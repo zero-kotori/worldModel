@@ -57,6 +57,7 @@ enum ObservationStatus {
   UNKNOWN
   CONFIRMED
   REJECTED
+  SETTLED
 }
 
 enum EvidenceConfirmationMode {
@@ -68,6 +69,7 @@ enum EvidenceStatus {
   ACTIVE
   SUPERSEDED
   REJECTED
+  DELETED
 }
 
 enum EvidenceDirection {
@@ -128,6 +130,7 @@ model Hypothesis {
   belief             Belief                   @relation(fields: [beliefId], references: [id], onDelete: Cascade)
   proposition        String
   notes              String
+  evidenceSearchQuery String                   @default("")
   stance             HypothesisStance         @default(SUPPORTS)
   priorProbability   Float
   currentProbability Float
@@ -248,9 +251,12 @@ model BayesianUpdateEvent {
   evidenceId      String
   evidence        Evidence     @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
   likelihoodRunId String?
+  likelihoodRunIds String[]     @default([])
   likelihoodRun   LikelihoodRun? @relation(fields: [likelihoodRunId], references: [id], onDelete: SetNull)
   priorSnapshot   Json
   posteriorSnapshot Json
+  confidence      Float        @default(0)
+  explanations    Json         @default("[]")
   mode            UpdateMode
   status          UpdateStatus @default(APPLIED)
   createdAt       DateTime     @default(now())
@@ -265,10 +271,13 @@ model ObservationRun {
   startedAt         DateTime             @default(now())
   finishedAt        DateTime?
   itemCount         Int                  @default(0)
+  reprocessedObservationCount Int        @default(0)
   deduplicatedCount Int                  @default(0)
   candidateCount    Int                  @default(0)
   autoAppliedCount  Int                  @default(0)
   reviewCount       Int                  @default(0)
+  lowImpactCount    Int                  @default(0)
+  unmatchedCount    Int                  @default(0)
   queryCount        Int                  @default(0)
   querySummary      Json?
   errorMessage      String?
@@ -281,6 +290,7 @@ model AutomationHeartbeat {
   nextRunAt               DateTime?
   intervalMs              Int
   consecutiveFailureCount Int                       @default(0)
+  lastNotice              String                    @default("")
   lastError               String                    @default("")
   createdAt               DateTime                  @default(now())
   updatedAt               DateTime                  @updatedAt
@@ -295,6 +305,10 @@ model AutomationWorkerConfig {
   failureBackoffMultiplier Float   @default(2)
   maxIntervalMs           Int
   reviewOnly              Boolean  @default(true)
+  maxQueries              Int?
+  maxSources              Int?
+  beliefIds               String[] @default([])
+  sourceIds               String[] @default([])
   maxObservations         Int?
   candidateThreshold      Float?
   autoConfirmThreshold    Float?

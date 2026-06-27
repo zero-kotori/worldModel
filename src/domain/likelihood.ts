@@ -7,6 +7,7 @@ export type EstimatorOutput = {
   weight: number;
   rationale?: string;
   abstain?: boolean;
+  reviewRequired?: boolean;
   modelVersion?: string;
 };
 
@@ -62,7 +63,7 @@ export function combineEstimatorOutputs(outputs: EstimatorOutput[]): EnsembleLik
   return {
     likelihoodRatio: Math.exp(weightedLogLikelihood / effectiveWeightTotal),
     confidence: effectiveWeightTotal / configuredWeightTotal,
-    reviewRequired: false,
+    reviewRequired: usableOutputs.some((output) => output.reviewRequired === true),
     usedEstimators: usableOutputs.map((output) => output.estimator),
     rationale: usableOutputs
       .map((output) => `${output.estimator}: ${output.rationale ?? "no rationale supplied"}`)

@@ -1,9 +1,13 @@
 import { pathToFileURL } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { config } from "dotenv";
+import { createReadableCodes, readableCode } from "@/lib/world-model-display";
+import { createInMemoryWorldModelStore } from "@/server/services/in-memory-store";
 import { createPrismaWorldModelStore } from "@/server/services/prisma-store";
 import { createWorldModelServices } from "@/server/services/world-model-services";
 import type { EvidenceLoopResult, WorldModelServices } from "@/server/services/types";
+
+export type AcceptanceStoreMode = "memory" | "prisma";
 
 export type AcceptanceAutoLoopCreatedIds = {
   beliefId?: string;
@@ -18,15 +22,29 @@ export type AcceptanceAutoLoopOptions = {
 
 export type AcceptanceAutoLoopResult = {
   runId: string;
+  storeMode?: AcceptanceStoreMode;
   beliefId: string;
+  beliefCode: string;
   hypothesisId: string;
+  hypothesisCode: string;
   sourceId: string;
+  sourceCode: string;
+  observationCodes: string[];
+  evidenceCodes: string[];
+  updateCodes: string[];
   beforeProbability: number;
   afterProbability: number;
   evidenceCount: number;
   updateCount: number;
   loop: EvidenceLoopResult;
 };
+
+export type AcceptanceAutoLoopCommandOptions = {
+  storeMode: AcceptanceStoreMode;
+  runId?: string;
+};
+
+export type AcceptanceAutoLoopCliOptions = AcceptanceAutoLoopCommandOptions;
 
 function assertCondition(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -53,6 +71,26 @@ export async function fetchAcceptanceSearchPage(url: string) {
   ].join("");
 }
 
+function argValue(argv: string[], name: string) {
+  const index = argv.indexOf(name);
+  if (index < 0) return undefined;
+  return argv[index + 1];
+}
+
+function normalizeStoreMode(value: string | undefined): AcceptanceStoreMode {
+  return value === "memory" ? "memory" : "prisma";
+}
+
+export function parseAcceptanceAutoLoopArgs(
+  argv = process.argv,
+  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>
+): AcceptanceAutoLoopCliOptions {
+  return {
+    storeMode: normalizeStoreMode(argValue(argv, "--store") ?? env.WORLDMODEL_ACCEPTANCE_STORE),
+    runId: argValue(argv, "--run-id")
+  };
+}
+
 export async function runAcceptanceAutoLoop(
   services: WorldModelServices,
   options: AcceptanceAutoLoopOptions = {}
@@ -68,7 +106,14 @@ export async function runAcceptanceAutoLoop(
       {
         proposition: hypothesisText,
         priorProbability: 0.35,
+        stance: "SUPPORTS",
         notes: "AI agents accelerate engineering teams acceptance evidence"
+      },
+      {
+        proposition: `AI agents do not accelerate engineering teams ${runId}`,
+        priorProbability: 0.35,
+        stance: "OPPOSES",
+        notes: "Counter-hypothesis for acceptance auto-apply coverage"
       }
     ]
   });
@@ -91,6 +136,7 @@ export async function runAcceptanceAutoLoop(
   const loop = await services.automation.runEvidenceLoop({
     beliefIds: [belief.id],
     sourceIds: [source.id],
+    maxQueries: 1,
     maxObservations: 1,
     autoConfirmThreshold: 0.2
   });
@@ -104,6 +150,21 @@ export async function runAcceptanceAutoLoop(
   const updates = (await services.updates.listEvents()).filter(
     (event) => event.beliefId === belief.id && evidenceIds.has(event.evidenceId)
   );
+  const allBeliefs = await services.beliefs.listBeliefs();
+  const allSources = await services.sources.listSources();
+  const allObservations = await services.observations.listObservations();
+  const allEvidence = await services.evidence.listEvidence();
+  const allUpdates = await services.updates.listEvents();
+  const beliefCodes = createReadableCodes(allBeliefs, "B", (item) => item.createdAt);
+  const hypothesisCodes = createReadableCodes(
+    allBeliefs.flatMap((item) => item.hypotheses),
+    "H",
+    (item) => item.createdAt
+  );
+  const sourceCodes = createReadableCodes(allSources, "S", (item) => item.createdAt);
+  const observationCodes = createReadableCodes(allObservations, "O", (item) => item.observedAt);
+  const evidenceCodes = createReadableCodes(allEvidence, "E", (item) => item.confirmedAt);
+  const updateCodes = createReadableCodes(allUpdates, "U", (item) => item.createdAt);
 
   assertCondition(loop.queryCount === 1, `Expected one generated query, received ${loop.queryCount}.`);
   assertCondition(loop.sourceRunCount === 1, `Expected one source run, received ${loop.sourceRunCount}.`);
@@ -123,14 +184,52 @@ export async function runAcceptanceAutoLoop(
   return {
     runId,
     beliefId: belief.id,
+    beliefCode: readableCode(beliefCodes, belief.id, "B"),
     hypothesisId: hypothesis.id,
+    hypothesisCode: readableCode(hypothesisCodes, hypothesis.id, "H"),
     sourceId: source.id,
+    sourceCode: readableCode(sourceCodes, source.id, "S"),
+    observationCodes: evidence.map((item) => readableCode(observationCodes, item.observationId, "O")),
+    evidenceCodes: evidence.map((item) => readableCode(evidenceCodes, item.id, "E")),
+    updateCodes: updates.map((item) => readableCode(updateCodes, item.id, "U")),
     beforeProbability: hypothesis.currentProbability,
     afterProbability: updatedHypothesis.currentProbability,
     evidenceCount: evidence.length,
     updateCount: updates.length,
     loop
   };
+}
+
+export async function runAcceptanceAutoLoopCommand(options: AcceptanceAutoLoopCommandOptions): Promise<AcceptanceAutoLoopResult> {
+  if (options.storeMode === "memory") {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: { fetchText: fetchAcceptanceSearchPage }
+    });
+    return {
+      ...(await runAcceptanceAutoLoop(services, { runId: options.runId })),
+      storeMode: "memory"
+    };
+  }
+
+  const prisma = new PrismaClient();
+  const createdIds: AcceptanceAutoLoopCreatedIds = {};
+  try {
+    const services = createWorldModelServices(createPrismaWorldModelStore(prisma), {
+      sourceAdapterDependencies: { fetchText: fetchAcceptanceSearchPage }
+    });
+    return {
+      ...(await runAcceptanceAutoLoop(services, {
+        runId: options.runId,
+        onCreated(ids) {
+          Object.assign(createdIds, ids);
+        }
+      })),
+      storeMode: "prisma"
+    };
+  } finally {
+    await cleanupAcceptanceAutoLoop(prisma, createdIds);
+    await prisma.$disconnect();
+  }
 }
 
 async function cleanupAcceptanceAutoLoop(prisma: PrismaClient, ids: AcceptanceAutoLoopCreatedIds) {
@@ -169,22 +268,8 @@ async function main() {
   config({ path: ".env.local" });
   config();
 
-  const prisma = new PrismaClient();
-  const createdIds: AcceptanceAutoLoopCreatedIds = {};
-  try {
-    const services = createWorldModelServices(createPrismaWorldModelStore(prisma), {
-      sourceAdapterDependencies: { fetchText: fetchAcceptanceSearchPage }
-    });
-    const result = await runAcceptanceAutoLoop(services, {
-      onCreated(ids) {
-        Object.assign(createdIds, ids);
-      }
-    });
-    console.log(JSON.stringify(result, null, 2));
-  } finally {
-    await cleanupAcceptanceAutoLoop(prisma, createdIds);
-    await prisma.$disconnect();
-  }
+  const result = await runAcceptanceAutoLoopCommand(parseAcceptanceAutoLoopArgs());
+  console.log(JSON.stringify(result, null, 2));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

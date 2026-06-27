@@ -18,6 +18,7 @@ export type LlmEvaluationSummary = {
   modelName: string;
   sampleCount: number;
   scoredCount: number;
+  sourceCounts: Record<string, number>;
   directionAccuracy: Record<TrainingLabel, AccuracyBucket>;
   likelihoodRatio: {
     min: number | null;
@@ -71,14 +72,17 @@ export function summarizeLlmEvaluation(
   let reviewRequiredCount = 0;
   let fallbackComparedCount = 0;
   let fallbackDivergenceCount = 0;
+  const sourceCounts: Record<string, number> = {};
 
   for (const item of items) {
     const expected = item.sample.label;
     const predicted = outputDirection(item.llm);
+    let itemRequiresReview = item.llm.reviewRequired === true;
+    sourceCounts[item.sample.source] = (sourceCounts[item.sample.source] ?? 0) + 1;
     directionAccuracy[expected].total += 1;
 
     if (!predicted) {
-      reviewRequiredCount += 1;
+      itemRequiresReview = true;
     } else {
       scoredCount += 1;
       directionAccuracy[expected].scored += 1;
@@ -92,11 +96,13 @@ export function summarizeLlmEvaluation(
     const confidence = item.llm.confidence ?? 0;
     if (!item.llm.abstain && confidence < lowConfidenceThreshold) {
       lowConfidenceCount += 1;
-      reviewRequiredCount += 1;
+      itemRequiresReview = true;
     }
 
+    if (itemRequiresReview) reviewRequiredCount += 1;
+
     const fallbackDirection = item.fallback ? outputDirection(item.fallback) : null;
-    if (predicted && fallbackDirection) {
+    if (predicted && fallbackDirection && fallbackDirection !== "NEUTRAL") {
       fallbackComparedCount += 1;
       if (predicted !== fallbackDirection) fallbackDivergenceCount += 1;
     }
@@ -111,6 +117,7 @@ export function summarizeLlmEvaluation(
     modelName: options.modelName,
     sampleCount: items.length,
     scoredCount,
+    sourceCounts,
     directionAccuracy,
     likelihoodRatio: {
       min: likelihoodRatios.length ? Math.min(...likelihoodRatios) : null,

@@ -17,6 +17,33 @@ describe("observation deduplication", () => {
     });
   });
 
+  it("detects URL duplicates after removing tracking parameters, fragments, and trailing slashes", () => {
+    const decision = deduplicateObservation(
+      {
+        title: "A",
+        content: "Alpha",
+        url: "https://Example.com/a/?utm_source=newsletter&utm_campaign=launch#section",
+        observedAt
+      },
+      [
+        {
+          id: "existing-canonical-url",
+          title: "A old",
+          content: "Alpha old",
+          url: "https://example.com/a",
+          observedAt
+        }
+      ]
+    );
+
+    expect(decision).toEqual({
+      duplicate: true,
+      reason: "URL",
+      duplicateOfId: "existing-canonical-url",
+      confidence: 1
+    });
+  });
+
   it("detects normalized content hash duplicates", () => {
     const decision = deduplicateObservation(
       { title: "A", content: "OpenAI releases a model.", normalizedHash: "hash-1", observedAt },

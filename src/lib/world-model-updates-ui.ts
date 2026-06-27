@@ -8,6 +8,11 @@ export type UpdateDeltaSummary = {
   tone: UpdateDeltaTone;
 };
 
+export type RollbackOption = {
+  value: string;
+  label: string;
+};
+
 function formatProbability(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
@@ -68,4 +73,33 @@ export function summarizeUpdateDelta(
     detail: `${label} ${formatProbability(delta.prior)} -> ${formatProbability(delta.posterior)}`,
     tone: updateDeltaTone(delta.delta)
   };
+}
+
+export function canRollbackUpdate(event: Pick<BayesianUpdateEventRecord, "status">) {
+  return event.status === "APPLIED";
+}
+
+export function createRollbackOptions(
+  events: BayesianUpdateEventRecord[],
+  eventLabel: (eventId: string) => string,
+  evidenceLabel: (evidenceId: string) => string
+): RollbackOption[] {
+  return events.filter(canRollbackUpdate).map((event) => ({
+    value: event.id,
+    label: `${eventLabel(event.id)} · ${evidenceLabel(event.evidenceId)} · ${event.status}`
+  }));
+}
+
+export function summarizeUpdateExplanation(
+  event: Pick<BayesianUpdateEventRecord, "explanations">,
+  hypothesisLabel: (hypothesisId: string) => string = (hypothesisId) => hypothesisId
+) {
+  const explanation = event.explanations.find((item) => item.trim());
+  if (!explanation) return "";
+
+  const match = explanation.match(/^([^:]+):\s*(.*)$/);
+  if (!match) return explanation;
+
+  const [, hypothesisId, rationale] = match;
+  return `${hypothesisLabel(hypothesisId)}: ${rationale}`;
 }

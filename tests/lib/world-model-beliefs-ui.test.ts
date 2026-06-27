@@ -5,8 +5,45 @@ import {
   isHypothesisReviewDue,
   parseDateTimeLocalValue,
   parseDateTimePatchValue,
+  recommendedHypothesisSuccessPath,
+  summarizeHypothesisEvidenceImpact,
+  summarizeHypothesisStanceCoverage,
   summarizeHypothesisTimeCoverage
 } from "@/lib/world-model-beliefs-ui";
+import type { EvidenceRecord } from "@/server/services/types";
+
+function evidence(input: {
+  id: string;
+  confirmedAt: Date;
+  hypothesisId: string;
+  direction: "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL";
+  likelihoodRatio: number;
+}): EvidenceRecord {
+  return {
+    id: input.id,
+    observationId: `observation_${input.id}`,
+    title: input.id,
+    content: input.id,
+    confirmedAt: input.confirmedAt,
+    confirmationMode: "MANUAL",
+    credibility: 0.8,
+    status: "ACTIVE",
+    metadata: {},
+    links: [
+      {
+        id: `link_${input.id}`,
+        evidenceId: input.id,
+        hypothesisId: input.hypothesisId,
+        direction: input.direction,
+        relevance: 0.8,
+        likelihoodRatio: input.likelihoodRatio,
+        confidence: 0.7,
+        rationale: "Test link",
+        createdAt: input.confirmedAt
+      }
+    ]
+  };
+}
 
 describe("world model beliefs UI", () => {
   const referenceTime = new Date(2026, 5, 11, 9, 30, 0);
@@ -103,5 +140,79 @@ describe("world model beliefs UI", () => {
     expect(isHypothesisReviewDue({ status: "ACTIVE", expiresAt: new Date(2026, 6, 20, 9, 30, 0) }, referenceTime)).toBe(false);
     expect(isHypothesisReviewDue({ status: "ACTIVE", startsAt: new Date(2026, 5, 12, 9, 30, 0) }, referenceTime)).toBe(false);
     expect(isHypothesisReviewDue({ status: "PAUSED", expiresAt: new Date(2026, 5, 10, 9, 30, 0) }, referenceTime)).toBe(false);
+  });
+
+  it("summarizes confirmed evidence impact for one hypothesis", () => {
+    const summary = summarizeHypothesisEvidenceImpact(
+      "hypothesis_1",
+      [
+        evidence({
+          id: "evidence_old",
+          confirmedAt: new Date("2026-06-10T08:00:00.000Z"),
+          hypothesisId: "hypothesis_1",
+          direction: "SUPPORTS",
+          likelihoodRatio: 2
+        }),
+        evidence({
+          id: "evidence_latest",
+          confirmedAt: new Date("2026-06-11T08:00:00.000Z"),
+          hypothesisId: "hypothesis_1",
+          direction: "OPPOSES",
+          likelihoodRatio: 0.5
+        }),
+        evidence({
+          id: "evidence_other",
+          confirmedAt: new Date("2026-06-11T09:00:00.000Z"),
+          hypothesisId: "hypothesis_2",
+          direction: "SUPPORTS",
+          likelihoodRatio: 3
+        })
+      ],
+      (id) => (id === "evidence_latest" ? "E-002" : id)
+    );
+
+    expect(summary).toEqual({
+      label: "2 条证据",
+      detail: "最近 E-002 · 反对假设 · LR 0.50",
+      tone: "mixed"
+    });
+  });
+
+  it("summarizes hypotheses without evidence as untested", () => {
+    expect(summarizeHypothesisEvidenceImpact("hypothesis_1", [])).toEqual({
+      label: "无证据",
+      detail: "尚未确认影响这个假设的证据。",
+      tone: "neutral"
+    });
+  });
+
+  it("summarizes one-sided hypothesis sets as cognitive coverage gaps", () => {
+    expect(
+      summarizeHypothesisStanceCoverage([
+        { status: "ACTIVE", stance: "SUPPORTS" },
+        { status: "PAUSED", stance: "OPPOSES" }
+      ])
+    ).toEqual({
+      label: "缺少反证假设",
+      detail: "当前有效假设只有支持方向，建议补充可证伪或替代解释。",
+      tone: "warning"
+    });
+
+    expect(
+      summarizeHypothesisStanceCoverage([
+        { status: "ACTIVE", stance: "SUPPORTS" },
+        { status: "ACTIVE", stance: "OPPOSES" }
+      ])
+    ).toEqual({
+      label: "支持/反证均衡",
+      detail: "当前有效假设同时覆盖支持和反证方向。",
+      tone: "healthy"
+    });
+  });
+
+  it("routes observation-driven recommended hypotheses to the requeued review candidate", () => {
+    expect(recommendedHypothesisSuccessPath("observation_1")).toBe("/admin/world-model/observations#review-candidates");
+    expect(recommendedHypothesisSuccessPath("")).toBe("/admin/world-model/beliefs");
+    expect(recommendedHypothesisSuccessPath(undefined)).toBe("/admin/world-model/beliefs");
   });
 });

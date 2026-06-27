@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import argparse
 from collections import defaultdict
 from pathlib import Path
 
@@ -24,6 +25,25 @@ def load_samples(path: Path) -> list[dict]:
     return samples
 
 
+def clean(value: object) -> str:
+    return str(value or "").strip()
+
+
+def validate_samples(samples: list[dict]) -> None:
+    for index, sample in enumerate(samples, start=1):
+        if clean(sample.get("source")).lower() == "demo":
+            raise ValueError("Refusing to train lightweight model on demo training samples.")
+        if not clean(sample.get("source")) or not clean(sample.get("claim") or sample.get("hypothesis")) or not clean(evidence_text(sample)):
+            raise ValueError(f"Refusing to train lightweight model on invalid training sample {index}.")
+        for field in ("relevance", "likelihoodRatio", "confidence"):
+            try:
+                value = float(sample.get(field))
+            except (TypeError, ValueError):
+                raise ValueError(f"Refusing to train lightweight model on invalid training sample {index}.") from None
+            if not math.isfinite(value) or (field != "likelihoodRatio" and not 0 <= value <= 1) or (field == "likelihoodRatio" and value <= 0):
+                raise ValueError(f"Refusing to train lightweight model on invalid training sample {index}.")
+
+
 def evidence_text(sample: dict) -> str:
     if sample.get("evidence"):
         return str(sample.get("evidence", ""))
@@ -32,6 +52,12 @@ def evidence_text(sample: dict) -> str:
 
 def claim_text(sample: dict) -> str:
     return str(sample.get("claim") or sample.get("hypothesis") or "")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output-dir", default="model-artifacts")
+    return parser.parse_args()
 
 
 def predict_log_lr(sample: dict, token_weights: dict[str, float], bias: float) -> float:
@@ -44,8 +70,9 @@ def predict_log_lr(sample: dict, token_weights: dict[str, float], bias: float) -
 
 
 def main() -> None:
-    output_dir = Path("model-artifacts")
-    output_dir.mkdir(exist_ok=True)
+    args = parse_args()
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     samples_path = output_dir / "training-samples.jsonl"
     samples = load_samples(samples_path)
     artifact = output_dir / "lightweight-local.json"
@@ -69,6 +96,8 @@ def main() -> None:
         )
         print(f"Wrote insufficient-data artifact: {artifact}")
         return
+
+    validate_samples(samples)
 
     weighted_targets: list[tuple[float, float]] = []
     token_totals: dict[str, float] = defaultdict(float)

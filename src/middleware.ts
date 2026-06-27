@@ -50,10 +50,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (request.nextUrl.pathname.startsWith("/api")) {
-    return NextResponse.next();
-  }
-
   if (await verifyRequest(request)) {
     return NextResponse.next();
   }

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { config } from "dotenv";
 import { createBodyHash, createProxySignature, proxyHeaderNames } from "../src/server/proxy-auth";
@@ -17,12 +18,13 @@ const pages = [
   { path: "/admin/world-model/observations", texts: ["未知证据队列", "重复候选", "观察池"] },
   { path: "/admin/world-model/evidence", texts: ["从观察确认为证据", "证据库"] },
   { path: "/admin/world-model/sources", texts: ["自动证据闭环", "来源列表"] },
-  { path: "/admin/world-model/models", texts: ["模型状态"] }
+  { path: "/admin/world-model/models", texts: ["模型状态", "LLM 评估运行"] }
 ];
 const viewports = [
   { name: "desktop", width: 1440, height: 1000 },
   { name: "mobile", width: 390, height: 844 }
 ];
+const fatalPageTexts = ["数据加载失败", "数据库未配置或不可用", "Application error"];
 
 function findBrowserExecutable() {
   const candidates = [
@@ -57,12 +59,18 @@ async function checkPage(browser: Browser, route: (typeof pages)[number], viewpo
   const url = new URL(route.path, baseUrl).toString();
   await page.goto(url, { waitUntil: "networkidle" });
   const bodyText = await page.locator("body").innerText();
-  if (!bodyText.includes("世界模型") || !route.texts.every((text) => bodyText.includes(text))) {
-    throw new Error(`${route.path} missing expected text for ${viewport.name}`);
-  }
+  assertWorldModelPageBody(route.path, viewport.name, bodyText, route.texts);
   const bodyBox = await page.locator("body").boundingBox();
   if (!bodyBox || bodyBox.width < viewport.width * 0.9 || bodyBox.height < 200) {
     throw new Error(`${route.path} rendered with an invalid body box for ${viewport.name}`);
+  }
+  const graphContainer = page.locator("[data-graph-pan-active]").first();
+  if ((await graphContainer.count()) > 0) {
+    assertGraphCanvasState(route.path, viewport.name, {
+      emptyGraph: bodyText.includes("暂无图谱数据"),
+      nodeCount: await page.locator(".react-flow__node").count(),
+      canvasBox: await graphContainer.boundingBox()
+    });
   }
   const screenshotPath = path.join(
     process.cwd(),
@@ -73,6 +81,35 @@ async function checkPage(browser: Browser, route: (typeof pages)[number], viewpo
   await page.screenshot({ path: screenshotPath, fullPage: true });
   await page.close();
   return { path: route.path, viewport: viewport.name, screenshotPath };
+}
+
+export function assertWorldModelPageBody(routePath: string, viewportName: string, bodyText: string, expectedTexts?: string[]) {
+  const route = pages.find((page) => page.path === routePath);
+  const requiredTexts = expectedTexts ?? route?.texts ?? [];
+  if (fatalPageTexts.some((text) => bodyText.includes(text))) {
+    throw new Error(`${routePath} rendered a data loading error for ${viewportName}`);
+  }
+  if (!bodyText.includes("世界模型") || !requiredTexts.every((text) => bodyText.includes(text))) {
+    throw new Error(`${routePath} missing expected text for ${viewportName}`);
+  }
+}
+
+export function assertGraphCanvasState(
+  routePath: string,
+  viewportName: string,
+  state: {
+    emptyGraph: boolean;
+    nodeCount: number;
+    canvasBox: { width: number; height: number } | null;
+  }
+) {
+  if (state.emptyGraph) return;
+  if (!state.canvasBox || state.canvasBox.width < 200 || state.canvasBox.height < 200) {
+    throw new Error(`${routePath} rendered with an invalid graph canvas for ${viewportName}`);
+  }
+  if (state.nodeCount < 1) {
+    throw new Error(`${routePath} rendered without graph nodes for ${viewportName}`);
+  }
 }
 
 async function main() {
@@ -92,7 +129,9 @@ async function main() {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

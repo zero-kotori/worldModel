@@ -1,0 +1,1 @@
+ALTER TYPE "ObservationStatus" ADD VALUE IF NOT EXISTS 'SETTLED';

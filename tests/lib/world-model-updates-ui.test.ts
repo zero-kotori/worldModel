@@ -1,4 +1,4 @@
-import { summarizeUpdateDelta } from "@/lib/world-model-updates-ui";
+import { canRollbackUpdate, createRollbackOptions, summarizeUpdateDelta, summarizeUpdateExplanation } from "@/lib/world-model-updates-ui";
 import type { BayesianUpdateEventRecord } from "@/server/services/types";
 
 function update(input: Partial<BayesianUpdateEventRecord>): BayesianUpdateEventRecord {
@@ -40,5 +40,41 @@ describe("world model updates UI", () => {
       detail: "原变化 H-001 +15.0pp",
       tone: "neutral"
     });
+  });
+
+  it("creates rollback options only for applied update events", () => {
+    const applied = update({ id: "update_applied", evidenceId: "evidence_applied", status: "APPLIED" });
+    const rolledBack = update({
+      id: "update_rolled_back",
+      evidenceId: "evidence_rolled_back",
+      status: "ROLLED_BACK",
+      rolledBackAt: new Date("2026-06-11T09:00:00.000Z")
+    });
+
+    expect(canRollbackUpdate(applied)).toBe(true);
+    expect(canRollbackUpdate(rolledBack)).toBe(false);
+    expect(
+      createRollbackOptions(
+        [applied, rolledBack],
+        (eventId) => (eventId === "update_applied" ? "U-001" : eventId),
+        (evidenceId) => (evidenceId === "evidence_applied" ? "E-001 · Applied evidence" : evidenceId)
+      )
+    ).toEqual([
+      {
+        value: "update_applied",
+        label: "U-001 · E-001 · Applied evidence · APPLIED"
+      }
+    ]);
+  });
+
+  it("summarizes update explanations with human-readable hypothesis labels", () => {
+    expect(
+      summarizeUpdateExplanation(
+        update({
+          explanations: ["hypothesis_1: Strong evidence increased the belief.", "Fallback explanation without id"]
+        }),
+        (id) => (id === "hypothesis_1" ? "H-001 · AI agents improve delivery quality" : id)
+      )
+    ).toBe("H-001 · AI agents improve delivery quality: Strong evidence increased the belief.");
   });
 });

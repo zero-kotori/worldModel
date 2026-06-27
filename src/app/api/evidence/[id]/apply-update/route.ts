@@ -8,8 +8,7 @@ export async function POST(request: Request, context: RouteContext) {
     const { id } = await context.params;
     const body = await readJson<{ likelihoodRunId?: string }>(request);
     const services = getWorldModelServices();
-    const preview = await services.updates.createPreview(id);
-    return jsonOk(await services.updates.applyPreview(preview, body.likelihoodRunId), { status: 201 });
+    return jsonOk(await services.updates.applyEvidence(id, body.likelihoodRunId), { status: 201 });
   } catch (error) {
     return jsonError(error);
   }
