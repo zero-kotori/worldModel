@@ -67,6 +67,69 @@ describe("likelihood estimators", () => {
     });
   });
 
+  it("calls an external OpenAI-compatible deep model endpoint and parses likelihood output", async () => {
+    const requests: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
+    const fakeFetch: typeof fetch = async (url, init) => {
+      requests.push({
+        url: String(url),
+        authorization: new Headers(init?.headers).get("authorization"),
+        body: JSON.parse(String(init?.body))
+      });
+      return new Response(
+        JSON.stringify({
+          model: "deep-eval-v1",
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  direction: "SUPPORTS",
+                  relevance: 0.84,
+                  likelihoodRatio: 2.6,
+                  confidence: 0.73,
+                  reviewRequired: false,
+                  rationale: "The external model finds direct market evidence."
+                })
+              }
+            }
+          ]
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+    const estimator = createExternalModelEstimator({
+      endpoint: "https://models.example/v1",
+      apiKey: "external-test-key",
+      model: "deep-eval-v1",
+      version: "2026-07-03",
+      fetch: fakeFetch
+    });
+
+    const output = await estimator.estimate({
+      evidenceText: "Polymarket odds moved after a verified event.",
+      hypothesis: "The event is more likely after the market move",
+      category: "AI_TREND",
+      sourceCredibility: 0.8
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).toBe("https://models.example/v1/chat/completions");
+    expect(requests[0].authorization).toBe("Bearer external-test-key");
+    expect(requests[0].body).toMatchObject({
+      model: "deep-eval-v1",
+      response_format: { type: "json_object" }
+    });
+    expect(output).toMatchObject({
+      estimator: "external-deep-model",
+      direction: "SUPPORTS",
+      relevance: 0.84,
+      likelihoodRatio: 2.6,
+      confidence: 0.73,
+      weight: 2,
+      modelVersion: "external-deep-model:2026-07-03",
+      abstain: false
+    });
+  });
+
   it("uses DeepSeek defaults when only the v1 LLM API key is configured", async () => {
     const requests: Array<{ url: string; body: Record<string, unknown>; authorization: string | null }> = [];
     const fakeFetch: typeof fetch = async (url, init) => {
@@ -437,6 +500,44 @@ describe("likelihood estimators", () => {
         sourceCredibility: 0.5
       })
     ).resolves.toMatchObject({ abstain: true, estimator: "lightweight" });
+  });
+
+  it("abstains external deep-model scoring without endpoint or model", async () => {
+    const estimator = createExternalModelEstimator({ endpoint: "https://models.example/v1" });
+
+    await expect(
+      estimator.estimate({
+        evidenceText: "Evidence",
+        hypothesis: "Hypothesis",
+        category: "TECH_TREND",
+        sourceCredibility: 0.5
+      })
+    ).resolves.toMatchObject({
+      estimator: "external-deep-model",
+      weight: 2,
+      abstain: true,
+      rationale: "External model endpoint or model is not configured."
+    });
+  });
+
+  it("does not leak external deep-model API keys in HTTP failure rationales", async () => {
+    const estimator = createExternalModelEstimator({
+      endpoint: "https://models.example/v1",
+      apiKey: "secret-external-key",
+      model: "deep-eval-v1",
+      fetch: async () => new Response("forbidden secret-external-key", { status: 403 })
+    });
+
+    const output = await estimator.estimate({
+      evidenceText: "Evidence",
+      hypothesis: "Hypothesis",
+      category: "TECH_TREND",
+      sourceCredibility: 0.5
+    });
+
+    expect(output.abstain).toBe(true);
+    expect(output.rationale).toBe("External model request failed with status 403.");
+    expect(output.rationale).not.toContain("secret-external-key");
   });
 
   it("abstains LLM and external adapters when configuration is missing", async () => {

@@ -300,26 +300,101 @@ function directionLikelihoodRatioConflict(direction: EstimatorOutput["direction"
   return false;
 }
 
-export function createExternalModelEstimator(config: { endpoint?: string; version?: string }): LikelihoodEstimator {
+export function createExternalModelEstimator(config: {
+  endpoint?: string;
+  apiKey?: string;
+  model?: string;
+  version?: string;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+}): LikelihoodEstimator {
   return {
     name: "external-deep-model",
-    async estimate() {
-      if (!config.endpoint) {
-        return {
-          estimator: "external-deep-model",
-          weight: 1,
-          abstain: true,
-          rationale: "External model endpoint is not configured."
-        };
+    async estimate(input) {
+      const endpoint = config.endpoint?.trim();
+      const model = config.model?.trim();
+      if (!endpoint || !model) {
+        return externalModelAbstain("External model endpoint or model is not configured.", config);
       }
 
-      return {
-        estimator: "external-deep-model",
-        weight: 1,
-        abstain: true,
-        rationale: "External model endpoint is registered but not called during local dry run.",
-        modelVersion: config.version ?? "external:unversioned"
-      };
+      const fetcher = config.fetch ?? fetch;
+      const controller = config.timeoutMs ? new AbortController() : undefined;
+      const timeout = controller ? setTimeout(() => controller.abort(), config.timeoutMs) : undefined;
+
+      try {
+        const headers: Record<string, string> = {
+          "content-type": "application/json"
+        };
+        const apiKey = config.apiKey?.trim();
+        if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+
+        const response = await fetcher(chatCompletionsUrl(endpoint), {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            model,
+            temperature: 0,
+            max_tokens: 500,
+            response_format: { type: "json_object" },
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You score how an evidence item changes one hypothesis. Use only the supplied evidence and context, not outside knowledge. Evaluate every material constraint in the hypothesis. Return only JSON with direction, relevance, likelihoodRatio, confidence, reviewRequired, and rationale."
+              },
+              {
+                role: "user",
+                content: likelihoodPrompt(input)
+              }
+            ]
+          }),
+          signal: controller?.signal
+        });
+
+        if (!response.ok) {
+          return externalModelAbstain(`External model request failed with status ${response.status}.`, config);
+        }
+
+        const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }>; model?: string };
+        const content = body.choices?.[0]?.message?.content;
+        if (!content) return externalModelAbstain("External model response did not include message content.", config);
+
+        const parsed = parseLlmLikelihoodJson(content);
+        if (!parsed) return externalModelAbstain("External model response was not valid likelihood JSON.", config);
+
+        return {
+          estimator: "external-deep-model",
+          direction: parsed.direction,
+          relevance: parsed.relevance,
+          likelihoodRatio: parsed.likelihoodRatio,
+          confidence: parsed.confidence,
+          weight: 2,
+          rationale: parsed.rationale,
+          reviewRequired: parsed.reviewRequired,
+          modelVersion: `external-deep-model:${config.version ?? body.model ?? model}`,
+          abstain: false
+        };
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return externalModelAbstain(`External model request failed: ${redactExternalModelSecret(reason, config)}.`, config);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
     }
   };
+}
+
+function externalModelAbstain(reason: string, config: { version?: string; model?: string }): EstimatorOutput {
+  return {
+    estimator: "external-deep-model",
+    weight: 2,
+    abstain: true,
+    rationale: reason,
+    modelVersion: `external-deep-model:${config.version ?? config.model ?? "unconfigured"}`
+  };
+}
+
+function redactExternalModelSecret(reason: string, config: { apiKey?: string }) {
+  const secret = config.apiKey?.trim();
+  return secret ? reason.replaceAll(secret, "[redacted]") : reason;
 }
