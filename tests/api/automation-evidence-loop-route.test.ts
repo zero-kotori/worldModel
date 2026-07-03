@@ -22,7 +22,7 @@ function llmEvaluationArtifact(overrides: Partial<{
   return {
     ...(overrides.generatedAt === null
       ? {}
-      : { generatedAt: overrides.generatedAt ?? new Date("2026-06-18T01:00:00.000Z") }),
+      : { generatedAt: overrides.generatedAt ?? new Date() }),
     samplesPath: "model-artifacts/training-samples.jsonl",
     summary: {
       modelName: "deepseek:deepseek-v4-flash",

@@ -951,7 +951,7 @@ git commit -m "docs: add automation source setup notes"
 - No new files.
 - Verify all changed behavior.
 
-- [ ] **Step 1: Run source adapter tests**
+- [x] **Step 1: Run source adapter tests**
 
 ```bash
 npx vitest run tests/server/source-adapters.test.ts
@@ -959,7 +959,7 @@ npx vitest run tests/server/source-adapters.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 2: Run model estimator tests**
+- [x] **Step 2: Run model estimator tests**
 
 ```bash
 npx vitest run tests/server/model-estimators.test.ts
@@ -967,7 +967,7 @@ npx vitest run tests/server/model-estimators.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 3: Run configured service tests**
+- [x] **Step 3: Run configured service tests**
 
 ```bash
 npx vitest run tests/server/configured-services.test.ts
@@ -975,7 +975,7 @@ npx vitest run tests/server/configured-services.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 4: Run required project checks**
+- [x] **Step 4: Run required project checks**
 
 ```bash
 npm run lint
@@ -986,7 +986,7 @@ npm run observe -- --dry-run
 
 Expected: all commands exit 0. If `observe -- --dry-run` cannot reach network sources in the local environment, record the exact failing source and whether the failure is unrelated to code changes.
 
-- [ ] **Step 5: Run build if prior checks pass**
+- [x] **Step 5: Run build if prior checks pass**
 
 ```bash
 npm run build

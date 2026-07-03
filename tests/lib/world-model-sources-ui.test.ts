@@ -1698,7 +1698,7 @@ describe("world model sources UI", () => {
       effectiveHypothesisCount: 1,
       llmScorerReady: true,
       llmEvaluation: {
-        generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+        generatedAt: new Date(),
         samplesPath: "model-artifacts/training-samples.jsonl",
         summary: {
           modelName: "deepseek:deepseek-v4-flash",
@@ -1735,7 +1735,7 @@ describe("world model sources UI", () => {
 
   it("warns when the latest LLM evaluation does not cover local confirmed evidence", () => {
     const llmEvaluation = {
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -1781,7 +1781,7 @@ describe("world model sources UI", () => {
 
   it("warns when the latest LLM evaluation does not cover real platform samples", () => {
     const llmEvaluation = {
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -1827,7 +1827,7 @@ describe("world model sources UI", () => {
 
   it("accepts GitHub samples as real platform evaluation coverage", () => {
     const llmEvaluation = {
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -1865,7 +1865,7 @@ describe("world model sources UI", () => {
 
   it("accepts Manifold prediction market samples as real platform evaluation coverage", () => {
     const llmEvaluation = {
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -1903,7 +1903,7 @@ describe("world model sources UI", () => {
 
   it("accepts local resolved hypothesis samples as local evaluation coverage", () => {
     const llmEvaluation = {
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -2041,7 +2041,7 @@ describe("world model sources UI", () => {
       effectiveHypothesisCount: 1,
       llmScorerReady: true,
       llmEvaluation: {
-        generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+        generatedAt: new Date(),
         samplesPath: "model-artifacts/training-samples.jsonl",
         summary: {
           modelName: "deepseek:deepseek-v4-flash",
@@ -2085,7 +2085,7 @@ describe("world model sources UI", () => {
       effectiveHypothesisCount: 1,
       llmScorerReady: true,
       llmEvaluation: {
-        generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+        generatedAt: new Date(),
         samplesPath: "model-artifacts/training-samples.jsonl",
         summary: {
           modelName: "deepseek:deepseek-v4-flash",
@@ -2122,7 +2122,7 @@ describe("world model sources UI", () => {
 
   it("blocks auto-apply when the latest LLM evaluation has low per-direction accuracy", () => {
     const llmEvaluation = {
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -2168,7 +2168,7 @@ describe("world model sources UI", () => {
 
   it("blocks auto-apply when the latest LLM evaluation misses a scored direction", () => {
     const llmEvaluation = {
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -2211,7 +2211,7 @@ describe("world model sources UI", () => {
   it("blocks auto-apply when the LLM disagrees too often with the lightweight fallback", () => {
     const risk = llmEvaluationAutoApplyRisk(
       {
-        generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+        generatedAt: new Date(),
         samplesPath: "model-artifacts/training-samples.jsonl",
         summary: {
           modelName: "deepseek:deepseek-v4-flash",
@@ -2240,7 +2240,7 @@ describe("world model sources UI", () => {
 
   it("allows auto-apply readiness when LLM evaluation rates are exactly at configured thresholds", () => {
     const risk = llmEvaluationAutoApplyRisk({
-      generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+      generatedAt: new Date(),
       samplesPath: "model-artifacts/training-samples.jsonl",
       summary: {
         modelName: "deepseek:deepseek-v4-flash",
@@ -2269,7 +2269,7 @@ describe("world model sources UI", () => {
   it("blocks auto-apply when the LLM evaluation needs too much human review", () => {
     expect(
       llmEvaluationAutoApplyRisk({
-        generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+        generatedAt: new Date(),
         samplesPath: "model-artifacts/training-samples.jsonl",
         summary: {
           modelName: "deepseek:deepseek-v4-flash",

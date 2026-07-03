@@ -48,6 +48,28 @@ async function fetchSourcePresetFixtureText(url: string) {
     });
   }
 
+  if (url.includes("gamma-api.polymarket.com/events")) {
+    return JSON.stringify({
+      events: [
+        {
+          id: "event_fixture",
+          title: "Unrelated prediction event",
+          slug: "unrelated-prediction-event",
+          volume: 1000,
+          liquidity: 100,
+          markets: [
+            {
+              id: "market_fixture",
+              question: "Will an unrelated platform metric improve?",
+              outcomes: ["Yes", "No"],
+              outcomePrices: ["0.5", "0.5"]
+            }
+          ]
+        }
+      ]
+    });
+  }
+
   if (url.includes("gamma-api.polymarket.com")) {
     return JSON.stringify({
       markets: [
@@ -6334,20 +6356,22 @@ describe("world model services", () => {
     const sources = await services.sources.listSources();
     const evidence = await services.evidence.listEvidence();
     const updatedBelief = await services.beliefs.getBelief(belief.id);
+    const enabledPresetCount = sourcePresetDefinitions.filter((preset) => preset.enabled).length;
+    const enabledNonRssPresetCount = sourcePresetDefinitions.filter((preset) => preset.enabled && preset.kind !== "RSS").length;
 
     expect(sources).toHaveLength(sourcePresetDefinitions.length);
     expect(sources.map((source) => source.name)).toEqual(expect.arrayContaining(sourcePresetDefinitions.map((preset) => preset.name)));
     expect(loop).toMatchObject({
       queryCount: 1,
-      sourceRunCount: sourcePresetDefinitions.length,
-      itemCount: sourcePresetDefinitions.length,
+      sourceRunCount: enabledPresetCount,
+      itemCount: enabledPresetCount,
       candidateCount: 1,
       autoAppliedCount: 0,
       reviewCount: 1,
       failureCount: 0
     });
     expect(loop.deduplicatedCount).toBe(sourcePresetDefinitions.filter((preset) => preset.kind === "RSS").length - 1);
-    expect(loop.unmatchedCount).toBe(sourcePresetDefinitions.filter((preset) => preset.kind !== "RSS").length);
+    expect(loop.unmatchedCount).toBe(enabledNonRssPresetCount);
     expect(evidence).toHaveLength(0);
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
