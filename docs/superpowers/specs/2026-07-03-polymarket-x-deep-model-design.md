@@ -24,9 +24,34 @@ The existing system already has:
 
 Polymarket official documentation describes Gamma API, Data API, and public CLOB endpoints as read-oriented endpoints that do not require authentication. The market-data overview lists Gamma endpoints such as `/events`, `/markets`, and `/public-search`, and rate-limit documentation lists separate public limits for Gamma, Data, and CLOB APIs.
 
+For this project, Polymarket does not require the user to apply for an API key because this phase only reads public market data. Polymarket authenticated APIs, wallet signing, trading, order management, and private position data are out of scope. If a later phase adds trading or private account analytics, that later phase must introduce a separate credential and signing design.
+
 X official documentation describes recent search as `GET https://api.x.com/2/tweets/search/recent` and requires a Bearer Token. The endpoint returns recent posts matching a query, with parameters such as `query`, `max_results`, `tweet.fields`, `expansions`, and pagination tokens.
 
+X/Twitter does require a developer account, an approved app, and a Bearer Token for recent-search access. The token is not a Polymarket key and is not the same as the DeepSeek key used by the main LLM scorer.
+
 The external deep model will use an OpenAI-compatible chat-completions contract so the project can support DeepSeek-compatible, OpenAI-compatible, or local inference servers without introducing a provider-specific SDK.
+
+The external deep-model estimator requires a separate model endpoint contract. It can point to an OpenAI-compatible hosted model, a local inference server, or a DeepSeek-compatible endpoint, but it is configured independently from the existing `LLM_*` main scorer so it can be disabled, weighted, and audited separately.
+
+## Phase Boundary Decisions
+
+This phase implements three user-approved areas:
+
+1. Polymarket public market-data collection, with Polymarket as the priority prediction-market source.
+2. X/Twitter recent-search collection through a Bearer Token referenced by `credentialRef`.
+3. External deep-model HTTP estimation through a separately configured OpenAI-compatible endpoint.
+
+The following items are intentionally deferred:
+
+- Reddit adapter.
+- Telegram adapter.
+- Browser/cookie scraping for X/Twitter.
+- Polymarket trading, wallet signing, private portfolio, and order-management APIs.
+- Production process-manager packaging such as systemd units, Windows Task Scheduler XML, PM2, or supervisor configs.
+- Full split of all eight service groups into separate service files.
+
+The implementation may still perform a minimal `source-service.ts` / `automation-service.ts` extraction if needed to keep new source and automation code from further growing the composition root, but that extraction is a support task, not a full service-layer rewrite.
 
 ## Scope
 
@@ -44,6 +69,7 @@ The external deep model will use an OpenAI-compatible chat-completions contract 
 - Trading, order placement, wallet signing, positions, or private Polymarket account APIs.
 - Browser automation or cookie-based X scraping.
 - Reddit and Telegram adapters.
+- Production worker deployment packaging.
 - Storing API keys, bearer tokens, cookies, or local secret file contents in the database.
 - Full rewrite of all service modules in one pass.
 
@@ -55,6 +81,7 @@ Credentials stay outside the database and Git.
 
 - `X_MAIN_BEARER_TOKEN` for an X source with `credentialRef = "X_MAIN"`.
 - `EXTERNAL_MODEL_ENDPOINT`, `EXTERNAL_MODEL_API_KEY`, `EXTERNAL_MODEL_MODEL`, and optional `EXTERNAL_MODEL_VERSION` for the external deep model.
+- Existing `LLM_*` variables remain the main LLM scorer configuration. They are not automatically reused by `external-deep-model`.
 
 Logs and observation metadata must not include raw tokens, authorization headers, or secret-bearing URLs. Error messages should include platform, status code, and non-sensitive response summaries only.
 
@@ -194,7 +221,7 @@ Return `EstimatorOutput` with:
 
 ## Service Boundary Design
 
-This phase should avoid a risky all-at-once service rewrite. The target is a minimal extraction that stops new automation/source complexity from entering `world-model-services.ts`:
+This phase should avoid a risky all-at-once service rewrite. The target is a minimal extraction only if it is needed to stop new automation/source complexity from entering `world-model-services.ts`:
 
 - Create `src/server/services/source-service.ts` for source preset creation, source CRUD, dry-run, and source run orchestration.
 - Create `src/server/services/automation-service.ts` for evidence loop orchestration, heartbeat, and worker config.
@@ -202,6 +229,8 @@ This phase should avoid a risky all-at-once service rewrite. The target is a min
 - Move pure source/automation helper functions out first, then move stateful functions when their dependencies can be passed through a small context object.
 
 This preserves the current public `WorldModelServices` interface.
+
+The full target architecture still expects the eight service groups listed in `AGENTS.md`, but completing that full split is a later refactor after the Polymarket, X/Twitter, and external deep-model behavior is in place and verified.
 
 ## Testing Strategy
 
