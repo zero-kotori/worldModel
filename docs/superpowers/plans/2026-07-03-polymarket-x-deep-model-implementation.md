@@ -660,7 +660,7 @@ git commit -m "feat: enrich polymarket market observations"
 - Modify: `tests/server/source-adapters.test.ts`
 - Modify: `src/server/sources/adapters.ts`
 
-- [ ] **Step 1: Write failing X recent search credential test**
+- [x] **Step 1: Write failing X recent search credential test**
 
 Add:
 
@@ -729,7 +729,7 @@ it("collects X recent-search observations with a bearer token credential ref", a
 });
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -739,7 +739,7 @@ npx vitest run tests/server/source-adapters.test.ts -t "X recent-search"
 
 Expected: FAIL because `AdapterDependencies` has no `env` and `SOCIAL` without URL returns `[]`.
 
-- [ ] **Step 3: Implement X credential resolution and fetch path**
+- [x] **Step 3: Implement X credential resolution and fetch path**
 
 In `src/server/sources/adapters.ts`:
 
@@ -776,7 +776,7 @@ if (source.adapter === "x_recent_search") {
 
 Implement `fetchXRecentSearchObservations()` using `dependencies.fetchImpl ?? fetch`, Bearer header, and the parsing shape from the test.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run:
 
@@ -786,7 +786,7 @@ npx vitest run tests/server/source-adapters.test.ts -t "X recent-search"
 
 Expected: PASS.
 
-- [ ] **Step 5: Add X missing-token and failure redaction tests**
+- [x] **Step 5: Add X missing-token and failure redaction tests**
 
 Add:
 
@@ -816,7 +816,7 @@ it("does not leak X bearer tokens when recent-search requests fail", async () =>
 });
 ```
 
-- [ ] **Step 6: Run source adapter tests**
+- [x] **Step 6: Run source adapter tests**
 
 Run:
 
@@ -826,7 +826,7 @@ npx vitest run tests/server/source-adapters.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 4**
+- [x] **Step 7: Commit Task 4**
 
 ```bash
 git add src/server/sources/adapters.ts tests/server/source-adapters.test.ts
