@@ -230,6 +230,44 @@ function numberField(record: Record<string, unknown>, key: string) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function flexibleNumberField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function booleanField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function rawArrayField(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key];
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+}
+
+function arrayStringField(record: Record<string, unknown>, key: string): string[] {
+  return rawArrayField(record, key)
+    .map((item) => (typeof item === "string" || typeof item === "number" ? String(item).trim() : ""))
+    .filter(Boolean);
+}
+
+function numericArrayField(record: Record<string, unknown>, key: string): number[] {
+  return rawArrayField(record, key)
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item));
+}
+
 function dateField(record: Record<string, unknown>, key: string) {
   const value = stringField(record, key);
   if (!value) return undefined;
@@ -431,20 +469,41 @@ function parseGdeltArticleObservations(text: string, query: string | undefined):
   });
 }
 
-function parsePredictionMarketObservations(text: string, query: string | undefined): RawObservation[] {
+function parsePredictionMarketObservations(
+  text: string,
+  query: string | undefined,
+  sourceAdapter = "prediction"
+): RawObservation[] {
   const parsed = parseJsonResponse(text, "prediction market");
+  if (sourceAdapter === "polymarket_events") {
+    return parsePolymarketEventObservations(parsed, query);
+  }
+
   const markets = Array.isArray(parsed) ? recordArrayValue(parsed) : recordArrayValue(objectValue(parsed)?.markets);
+  const isPolymarketMarkets = sourceAdapter === "polymarket_markets";
   return markets.flatMap((market) => {
     const question = stringField(market, "question") ?? stringField(market, "title");
     if (!question) return [];
     const slug = stringField(market, "slug");
-    const volume = numberField(market, "volume");
-    const liquidity = numberField(market, "liquidity");
+    const volume = isPolymarketMarkets ? flexibleNumberField(market, "volume") : numberField(market, "volume");
+    const liquidity = isPolymarketMarkets ? flexibleNumberField(market, "liquidity") : numberField(market, "liquidity");
+    const outcomes = isPolymarketMarkets ? arrayStringField(market, "outcomes") : [];
+    const outcomePrices = isPolymarketMarkets ? numericArrayField(market, "outcomePrices") : [];
+    const outcomeSummary =
+      outcomes.length > 0
+        ? outcomes
+            .map((outcome, index) => `${outcome}${outcomePrices[index] === undefined ? "" : ` ${outcomePrices[index]}`}`)
+            .join(", ")
+        : undefined;
+    const active = booleanField(market, "active");
+    const closed = booleanField(market, "closed");
+    const archived = booleanField(market, "archived");
     return [
       {
-        title: `Prediction market: ${question}`,
+        title: `${isPolymarketMarkets ? "Polymarket" : "Prediction market"}: ${question}`,
         content: contentFromParts([
           stringField(market, "description") ?? question,
+          outcomeSummary,
           volume === undefined ? undefined : `Volume: ${volume}`,
           liquidity === undefined ? undefined : `Liquidity: ${liquidity}`
         ]),
@@ -453,7 +512,65 @@ function parsePredictionMarketObservations(text: string, query: string | undefin
         sourceMetadata: {
           adapter: "PREDICTION_MARKET",
           query,
-          source: "prediction_markets",
+          source: isPolymarketMarkets ? "polymarket_markets" : "prediction_markets",
+          ...(isPolymarketMarkets && stringField(market, "id") ? { marketId: stringField(market, "id") } : {}),
+          ...(isPolymarketMarkets && stringField(market, "conditionId") ? { conditionId: stringField(market, "conditionId") } : {}),
+          ...(isPolymarketMarkets && (stringField(market, "questionID") ?? stringField(market, "questionId"))
+            ? { questionId: stringField(market, "questionID") ?? stringField(market, "questionId") }
+            : {}),
+          ...(outcomes.length > 0 ? { outcomes } : {}),
+          ...(outcomePrices.length > 0 ? { outcomePrices } : {}),
+          ...(volume === undefined ? {} : { volume }),
+          ...(liquidity === undefined ? {} : { liquidity }),
+          ...(active === undefined ? {} : { active }),
+          ...(closed === undefined ? {} : { closed }),
+          ...(archived === undefined ? {} : { archived })
+        }
+      }
+    ];
+  });
+}
+
+function parsePolymarketEventObservations(parsed: unknown, query: string | undefined): RawObservation[] {
+  const events = Array.isArray(parsed) ? recordArrayValue(parsed) : recordArrayValue(objectValue(parsed)?.events);
+  return events.flatMap((event) => {
+    const title = stringField(event, "title") ?? stringField(event, "question");
+    if (!title) return [];
+    const slug = stringField(event, "slug");
+    const volume = flexibleNumberField(event, "volume");
+    const liquidity = flexibleNumberField(event, "liquidity");
+    const markets = recordArrayValue(event.markets);
+    const marketSummaries = markets
+      .map((market) => {
+        const question = stringField(market, "question") ?? stringField(market, "title");
+        const outcomes = arrayStringField(market, "outcomes");
+        const prices = numericArrayField(market, "outcomePrices");
+        const outcomeSummary =
+          outcomes.length > 0
+            ? outcomes.map((outcome, index) => `${outcome}${prices[index] === undefined ? "" : ` ${prices[index]}`}`).join(", ")
+            : "";
+        return contentFromParts([question, outcomeSummary]);
+      })
+      .filter(Boolean);
+
+    return [
+      {
+        title: `Polymarket: ${title}`,
+        content: contentFromParts([
+          stringField(event, "description") ?? title,
+          markets.length > 0 ? `Markets: ${markets.length}` : undefined,
+          marketSummaries.length > 0 ? marketSummaries.join(" | ") : undefined,
+          volume === undefined ? undefined : `Volume: ${volume}`,
+          liquidity === undefined ? undefined : `Liquidity: ${liquidity}`
+        ]),
+        url: stringField(event, "url") ?? (slug ? `https://polymarket.com/event/${slug}` : undefined),
+        publishedAt: dateField(event, "endDate"),
+        sourceMetadata: {
+          adapter: "PREDICTION_MARKET",
+          query,
+          source: "polymarket_events",
+          ...(stringField(event, "id") ? { eventId: stringField(event, "id") } : {}),
+          marketCount: markets.length,
           ...(volume === undefined ? {} : { volume }),
           ...(liquidity === undefined ? {} : { liquidity })
         }
@@ -462,11 +579,11 @@ function parsePredictionMarketObservations(text: string, query: string | undefin
   });
 }
 
-function parsePlatformObservations(kind: ObservationSourceKind, text: string, query: string | undefined) {
+function parsePlatformObservations(kind: ObservationSourceKind, text: string, query: string | undefined, sourceAdapter?: string) {
   if (kind === "GITHUB") return parseGithubSearchObservations(text, query);
   if (kind === "HUGGING_FACE") return parseHuggingFaceModelObservations(text, query);
   if (kind === "GDELT") return parseGdeltArticleObservations(text, query);
-  if (kind === "PREDICTION_MARKET") return parsePredictionMarketObservations(text, query);
+  if (kind === "PREDICTION_MARKET") return parsePredictionMarketObservations(text, query, sourceAdapter);
   return [];
 }
 
@@ -482,7 +599,7 @@ async function fetchPlatformQueryObservations(
 
   for (const item of urls) {
     try {
-      const parsedObservations = parsePlatformObservations(kind, await fetchText(item.url), item.query);
+      const parsedObservations = parsePlatformObservations(kind, await fetchText(item.url), item.query, source.adapter);
       successfulFetchCount += 1;
       observations.push(...parsedObservations);
     } catch (error) {

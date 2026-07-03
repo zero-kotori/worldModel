@@ -391,4 +391,100 @@ describe("observation source adapters", () => {
       }
     ]);
   });
+
+  it("parses rich Polymarket market fields from Gamma market search", async () => {
+    const adapter = createSourceAdapter("PREDICTION_MARKET", {
+      fetchText: async () =>
+        JSON.stringify([
+          {
+            id: "market-1",
+            question: "Will AI agents exceed 20% enterprise adoption in 2026?",
+            description: "Market tracks public adoption milestones.",
+            slug: "ai-agents-enterprise-adoption-2026",
+            conditionId: "0xabc",
+            questionID: "question-1",
+            endDate: "2026-12-31T00:00:00Z",
+            active: true,
+            closed: false,
+            archived: false,
+            volume: "250000.5",
+            liquidity: "18000.25",
+            outcomes: "[\"Yes\",\"No\"]",
+            outcomePrices: "[\"0.62\",\"0.38\"]"
+          }
+        ])
+    });
+
+    await expect(
+      adapter.fetch({ name: "Polymarket", adapter: "polymarket_markets", queries: ["AI agents adoption"] })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        title: "Polymarket: Will AI agents exceed 20% enterprise adoption in 2026?",
+        content: expect.stringContaining("Yes 0.62"),
+        url: "https://polymarket.com/event/ai-agents-enterprise-adoption-2026",
+        publishedAt: new Date("2026-12-31T00:00:00Z"),
+        sourceMetadata: expect.objectContaining({
+          adapter: "PREDICTION_MARKET",
+          query: "AI agents adoption",
+          source: "polymarket_markets",
+          marketId: "market-1",
+          conditionId: "0xabc",
+          questionId: "question-1",
+          outcomes: ["Yes", "No"],
+          outcomePrices: [0.62, 0.38],
+          volume: 250000.5,
+          liquidity: 18000.25,
+          active: true,
+          closed: false,
+          archived: false
+        })
+      })
+    ]);
+  });
+
+  it("parses Polymarket event search results", async () => {
+    const adapter = createSourceAdapter("PREDICTION_MARKET", {
+      fetchText: async () =>
+        JSON.stringify({
+          events: [
+            {
+              id: "event-1",
+              title: "AI adoption milestones in 2026",
+              slug: "ai-adoption-milestones-2026",
+              volume: 500000,
+              liquidity: 45000,
+              markets: [
+                {
+                  id: "market-1",
+                  question: "Will adoption exceed 20%?",
+                  outcomes: ["Yes", "No"],
+                  outcomePrices: ["0.55", "0.45"]
+                }
+              ]
+            }
+          ]
+        })
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "Polymarket events",
+        adapter: "polymarket_events",
+        url: "https://gamma-api.polymarket.com/events?search={query}&limit=10",
+        queries: ["AI adoption"]
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        title: "Polymarket: AI adoption milestones in 2026",
+        url: "https://polymarket.com/event/ai-adoption-milestones-2026",
+        sourceMetadata: expect.objectContaining({
+          adapter: "PREDICTION_MARKET",
+          query: "AI adoption",
+          source: "polymarket_events",
+          eventId: "event-1",
+          marketCount: 1
+        })
+      })
+    ]);
+  });
 });
