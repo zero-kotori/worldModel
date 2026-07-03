@@ -484,7 +484,7 @@ git commit -m "feat: wire optional external model scoring"
 - Modify: `tests/server/source-adapters.test.ts`
 - Modify: `src/server/sources/adapters.ts`
 
-- [ ] **Step 1: Write failing richer Polymarket market parsing test**
+- [x] **Step 1: Write failing richer Polymarket market parsing test**
 
 Add this test below the existing prediction-market test:
 
@@ -537,7 +537,7 @@ it("parses rich Polymarket market fields from Gamma market search", async () => 
 });
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -547,7 +547,7 @@ npx vitest run tests/server/source-adapters.test.ts -t "rich Polymarket"
 
 Expected: FAIL because current parser emits only minimal prediction-market metadata.
 
-- [ ] **Step 3: Implement richer Polymarket parsing**
+- [x] **Step 3: Implement richer Polymarket parsing**
 
 In `src/server/sources/adapters.ts`, add helpers:
 
@@ -577,7 +577,7 @@ function flexibleNumberField(record: Record<string, unknown>, key: string) {
 
 Replace `parsePredictionMarketObservations()` with Polymarket-aware parsing that preserves old behavior for object shapes with `markets`.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run:
 
@@ -587,7 +587,7 @@ npx vitest run tests/server/source-adapters.test.ts -t "rich Polymarket"
 
 Expected: PASS.
 
-- [ ] **Step 5: Add Polymarket events test**
+- [x] **Step 5: Add Polymarket events test**
 
 Add:
 
@@ -637,7 +637,7 @@ it("parses Polymarket event search results", async () => {
 });
 ```
 
-- [ ] **Step 6: Run source adapter tests**
+- [x] **Step 6: Run source adapter tests**
 
 Run:
 
@@ -647,7 +647,7 @@ npx vitest run tests/server/source-adapters.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 3**
+- [x] **Step 7: Commit Task 3**
 
 ```bash
 git add src/server/sources/adapters.ts tests/server/source-adapters.test.ts
