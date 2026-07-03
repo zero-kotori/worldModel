@@ -2,7 +2,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { vi } from "vitest";
 import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
-import type { WorldModelGraphEdge, WorldModelGraphNode } from "@/lib/world-model-graph";
+import type { WorldModelGraph, WorldModelGraphEdge, WorldModelGraphNode } from "@/lib/world-model-graph";
 import type {
   BayesianUpdateEventRecord,
   BeliefRecord,
@@ -11,6 +11,17 @@ import type {
   ObservationRecord,
   ObservationSourceRecord
 } from "@/server/services/types";
+
+vi.mock("@xyflow/react", async () => {
+  const ReactModule = await import("react");
+  return {
+    Background: () => ReactModule.createElement("div", { "data-testid": "graph-background" }),
+    PanOnScrollMode: { Vertical: "vertical" },
+    ReactFlow: ({ children }: { children?: React.ReactNode }) =>
+      ReactModule.createElement("div", { "data-testid": "react-flow" }, children),
+    applyNodeChanges: () => []
+  };
+});
 
 vi.mock("@/app/admin/world-model/actions", () => ({
   confirmGraphObservationAction: vi.fn(),
@@ -124,9 +135,42 @@ function observation(input: Partial<ObservationRecord> = {}): ObservationRecord 
   };
 }
 
+function minimalGraph(): WorldModelGraph {
+  return {
+    nodes: [
+      {
+        id: "belief_ai_agents",
+        type: "belief",
+        code: "B-001",
+        label: "AI agents",
+        status: "ACTIVE"
+      }
+    ],
+    edges: []
+  };
+}
+
 describe("world model graph view", () => {
   beforeEach(() => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
+  });
+
+  it("gives embedded overview graphs a viewport-responsive canvas height", async () => {
+    const { WorldModelGraphView } = await import("@/components/world-model/WorldModelGraphView");
+
+    const html = renderToStaticMarkup(React.createElement(WorldModelGraphView, { graph: minimalGraph() }));
+
+    expect(html).toContain("h-[clamp(640px,calc(100vh-120px),860px)]");
+    expect(html).not.toContain("h-[560px]");
+  });
+
+  it("keeps workspace graph pages on the dedicated full-height canvas", async () => {
+    const { WorldModelGraphView } = await import("@/components/world-model/WorldModelGraphView");
+
+    const html = renderToStaticMarkup(React.createElement(WorldModelGraphView, { graph: minimalGraph(), mode: "workspace" }));
+
+    expect(html).toContain("h-[calc(100vh-150px)] min-h-[640px]");
+    expect(html).not.toContain("h-[clamp(640px,calc(100vh-120px),860px)]");
   });
 
   it("renders readable likelihood run codes in update details instead of raw run ids", async () => {

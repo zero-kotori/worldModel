@@ -1205,7 +1205,7 @@ export function WorldModelGraphView({
 
   const selectedNode = selectedNodeId ? graphNodeById.get(selectedNodeId) : undefined;
   const selectedEdge = selectedEdgeId ? graphEdgeById.get(selectedEdgeId) : undefined;
-  const canvasHeightClass = mode === "workspace" ? "h-[calc(100vh-150px)] min-h-[640px]" : "h-[560px]";
+  const canvasHeightClass = mode === "workspace" ? "h-[calc(100vh-150px)] min-h-[640px]" : "h-[clamp(640px,calc(100vh-120px),860px)]";
   const asideHeightClass = mode === "workspace" ? "h-[calc(100vh-150px)] min-h-[640px] overflow-y-auto" : "";
   const rootClass = mode === "workspace" ? "grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]" : "grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]";
 
