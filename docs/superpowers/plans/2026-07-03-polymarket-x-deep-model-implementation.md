@@ -32,7 +32,7 @@ No Prisma schema changes are planned.
 - Modify: `src/server/models/estimators.ts`
 - Modify: `src/lib/world-model-llm-config.ts`
 
-- [ ] **Step 1: Write the failing external estimator success test**
+- [x] **Step 1: Write the failing external estimator success test**
 
 Add this test near the existing LLM estimator tests in `tests/server/model-estimators.test.ts`:
 
@@ -101,7 +101,7 @@ it("calls an external OpenAI-compatible deep model endpoint and parses likelihoo
 });
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
 Run:
 
@@ -111,7 +111,7 @@ npx vitest run tests/server/model-estimators.test.ts -t "external OpenAI-compati
 
 Expected: FAIL because `createExternalModelEstimator` does not accept `apiKey`, `model`, or `fetch`, and still abstains when endpoint is present.
 
-- [ ] **Step 3: Implement the minimal external estimator**
+- [x] **Step 3: Implement the minimal external estimator**
 
 In `src/server/models/estimators.ts`, expand the config type and make the endpoint call. Reuse `chatCompletionsUrl()`, `likelihoodPrompt()`, and `parseLlmLikelihoodJson()`:
 
@@ -198,7 +198,7 @@ function externalModelAbstain(reason: string, config: { version?: string; model?
 }
 ```
 
-- [ ] **Step 4: Run the focused test and verify GREEN**
+- [x] **Step 4: Run the focused test and verify GREEN**
 
 Run:
 
@@ -208,7 +208,7 @@ npx vitest run tests/server/model-estimators.test.ts -t "external OpenAI-compati
 
 Expected: PASS.
 
-- [ ] **Step 5: Add failure and config tests**
+- [x] **Step 5: Add failure and config tests**
 
 Add tests in `tests/server/model-estimators.test.ts` for:
 
@@ -249,7 +249,7 @@ it("does not leak external deep-model API keys in HTTP failure rationales", asyn
 });
 ```
 
-- [ ] **Step 6: Run all model estimator tests**
+- [x] **Step 6: Run all model estimator tests**
 
 Run:
 
@@ -259,7 +259,7 @@ npx vitest run tests/server/model-estimators.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 1**
+- [x] **Step 7: Commit Task 1**
 
 ```bash
 git add src/server/models/estimators.ts tests/server/model-estimators.test.ts
