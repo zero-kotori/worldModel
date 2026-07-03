@@ -43,7 +43,7 @@
 **Files:**
 - Create: `tests/server/service-layer-split.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { existsSync, readFileSync } from "node:fs";
@@ -93,7 +93,7 @@ describe("service layer split", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test and observe the expected failure**
+- [x] **Step 2: Run the test and observe the expected failure**
 
 Run: `npx vitest run tests/server/service-layer-split.test.ts`
 
@@ -108,7 +108,7 @@ Expected: failure because the eight service module files do not exist and `world
 - Modify: `src/server/services/world-model-services.ts`
 - Test: `tests/server/world-model-services.test.ts`
 
-- [ ] **Step 1: Add shared service context**
+- [x] **Step 1: Add shared service context**
 
 Move `AutoApplyPolicyInput` and `WorldModelServiceOptions` out of `world-model-services.ts` into `service-context.ts` with this public surface:
 
@@ -152,15 +152,15 @@ export function createWorldModelServiceContext(
 }
 ```
 
-- [ ] **Step 2: Move model import logic**
+- [x] **Step 2: Move model import logic**
 
 Create `createModelService(context)` returning `WorldModelServices["models"]`. Move `importModelArtifact` unchanged except that it reads `store` from `context`.
 
-- [ ] **Step 3: Move likelihood run logic**
+- [x] **Step 3: Move likelihood run logic**
 
 Create `createLikelihoodService(context)` returning `WorldModelServices["likelihood"]`. Move `runLikelihood` unchanged except that it reads `store` from `context`.
 
-- [ ] **Step 4: Wire the two factories in the composition root**
+- [x] **Step 4: Wire the two factories in the composition root**
 
 In `world-model-services.ts`, import the new factories and keep these exports:
 
@@ -170,7 +170,7 @@ export type { AutoApplyPolicyInput, WorldModelServiceOptions } from "@/server/se
 
 The returned object must use `likelihood: createLikelihoodService(context)` and `models: createModelService(context)`.
 
-- [ ] **Step 5: Run focused verification**
+- [x] **Step 5: Run focused verification**
 
 Run: `npx vitest run tests/server/world-model-services.test.ts tests/server/service-layer-split.test.ts`
 
@@ -184,11 +184,11 @@ Expected: `world-model-services.test.ts` passes; `service-layer-split.test.ts` s
 - Modify: `src/server/services/world-model-services.ts`
 - Test: `tests/server/world-model-services.test.ts`
 
-- [ ] **Step 1: Move update helper functions**
+- [x] **Step 1: Move update helper functions**
 
 Move these helpers from `world-model-services.ts` to `update-workflow.ts`: `evidenceLinkToPreviewLink`, `resolveHypothesesForLinks`, `evidenceLinksForBelief`, `createEvidencePreviews`, `baseProbabilitySnapshot`, and `createBeliefForSnapshotPreview`.
 
-- [ ] **Step 2: Create the update workflow interface**
+- [x] **Step 2: Create the update workflow interface**
 
 Expose these functions from `createUpdateWorkflow(context)`:
 
@@ -206,7 +206,7 @@ export type UpdateWorkflow = {
 };
 ```
 
-- [ ] **Step 3: Move public update methods**
+- [x] **Step 3: Move public update methods**
 
 Create `createUpdateService(updateWorkflow)` returning:
 
@@ -219,7 +219,7 @@ Create `createUpdateService(updateWorkflow)` returning:
 }
 ```
 
-- [ ] **Step 4: Run focused verification**
+- [x] **Step 4: Run focused verification**
 
 Run: `npx vitest run tests/server/world-model-services.test.ts tests/server/service-layer-split.test.ts`
 
@@ -235,19 +235,19 @@ Expected: behavior tests pass; architecture test still fails for remaining servi
 - Modify: `src/server/services/world-model-services.ts`
 - Test: `tests/server/world-model-services.test.ts`
 
-- [ ] **Step 1: Move evidence workflows**
+- [x] **Step 1: Move evidence workflows**
 
 Move evidence confirmation, link editing, rejection, soft deletion, and reapply logic into `createEvidenceWorkflow(context, updateWorkflow, likelihoodWorkflow)`. The workflow exposes `confirmObservation`, `confirmAndApplyObservation`, `updateAndReapplyEvidence`, `connectEvidenceHypothesis`, `disconnectEvidenceHypothesis`, `rejectEvidence`, `deleteEvidence`, and `listVisibleEvidence`.
 
-- [ ] **Step 2: Move observation workflows**
+- [x] **Step 2: Move observation workflows**
 
 Move `toDedupeObservation`, `metadataText`, `createObservation`, `updateObservation`, `rejectObservation`, and `settleObservation` into `createObservationWorkflow(context, evidenceWorkflow, beliefWorkflowAccess)`. `beliefWorkflowAccess` is a callback object with `updateHypothesisRecord(input)` and `recommendedEvidenceLinks(observation, options)` so observation code does not import belief or source service modules.
 
-- [ ] **Step 3: Create public service factories**
+- [x] **Step 3: Create public service factories**
 
 Create `createEvidenceService(evidenceWorkflow)` and `createObservationService(observationWorkflow)` returning the corresponding slices of `WorldModelServices`.
 
-- [ ] **Step 4: Run focused verification**
+- [x] **Step 4: Run focused verification**
 
 Run: `npx vitest run tests/server/world-model-services.test.ts tests/server/service-layer-split.test.ts`
 
@@ -261,19 +261,19 @@ Expected: behavior tests pass; architecture test still fails for belief, source,
 - Modify: `src/server/services/world-model-services.ts`
 - Test: `tests/server/world-model-services.test.ts`
 
-- [ ] **Step 1: Move belief helpers**
+- [x] **Step 1: Move belief helpers**
 
 Move `createHypotheses`, belief update, hypothesis update, mutually exclusive renormalization, active-evidence lookup, and recommendation logic into `createBeliefWorkflow(context, dependencies)`.
 
-- [ ] **Step 2: Expose workflow methods used by other domains**
+- [x] **Step 2: Expose workflow methods used by other domains**
 
 The workflow exposes `createBelief`, `updateBelief`, `createHypothesis`, `updateHypothesisRecord`, `recommendHypotheses`, `recommendedEvidenceLinks`, and `requeueAfterHypothesisChange`.
 
-- [ ] **Step 3: Create public service factory**
+- [x] **Step 3: Create public service factory**
 
 Create `createBeliefService(beliefWorkflow)` returning the `beliefs` slice.
 
-- [ ] **Step 4: Run focused verification**
+- [x] **Step 4: Run focused verification**
 
 Run: `npx vitest run tests/server/world-model-services.test.ts tests/server/service-layer-split.test.ts`
 
@@ -288,11 +288,11 @@ Expected: behavior tests pass; architecture test still fails for source, automat
 - Modify: `src/server/services/world-model-services.ts`
 - Test: `tests/server/world-model-services.test.ts`
 
-- [ ] **Step 1: Move candidate and source helpers**
+- [x] **Step 1: Move candidate and source helpers**
 
 Move source query generation, candidate scoring, recommendation metadata, source run persistence, retry suppression, and loop diagnostics into `source-workflow.ts`.
 
-- [ ] **Step 2: Create source workflow interface**
+- [x] **Step 2: Create source workflow interface**
 
 Expose these methods from `createSourceWorkflow(context, dependencies)`:
 
@@ -326,11 +326,11 @@ export type SourceWorkflow = {
 };
 ```
 
-- [ ] **Step 3: Create public service factories**
+- [x] **Step 3: Create public service factories**
 
 Create `createSourceService(context, sourceWorkflow)` for source CRUD, presets, dry runs, and source execution. Create `createAutomationService(context, sourceWorkflow)` for evidence-loop execution, heartbeat, and worker configuration.
 
-- [ ] **Step 4: Run focused verification**
+- [x] **Step 4: Run focused verification**
 
 Run: `npx vitest run tests/server/world-model-services.test.ts tests/server/service-layer-split.test.ts`
 
@@ -341,11 +341,11 @@ Expected: both test files pass, including the architecture guard.
 **Files:**
 - Modify: `AGENTS.md`
 
-- [ ] **Step 1: Update service-layer status in `AGENTS.md`**
+- [x] **Step 1: Update service-layer status in `AGENTS.md`**
 
 Replace the current-state note that says per-service modules remain future work with a note that the eight service modules are present and `world-model-services.ts` is the composition root.
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 Run these commands:
 
@@ -359,7 +359,7 @@ npm run build
 
 Expected: all commands exit with code 0.
 
-- [ ] **Step 3: Commit the implementation**
+- [x] **Step 3: Commit the implementation**
 
 ```bash
 git status --short
