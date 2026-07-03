@@ -274,7 +274,7 @@ git commit -m "feat: call external deep model estimator"
 - Modify: `src/server/services/configured.ts`
 - Modify: `tests/server/configured-services.test.ts`
 
-- [ ] **Step 1: Write a failing configured-services test**
+- [x] **Step 1: Write a failing configured-services test**
 
 Add this test to `tests/server/configured-services.test.ts`:
 
@@ -348,7 +348,7 @@ it("includes configured external deep-model outputs while keeping the main LLM s
 });
 ```
 
-- [ ] **Step 2: Run the configured-services focused test and verify RED**
+- [x] **Step 2: Run the configured-services focused test and verify RED**
 
 Run:
 
@@ -358,7 +358,7 @@ npx vitest run tests/server/configured-services.test.ts -t "external deep-model 
 
 Expected: FAIL because configured services only pass the LLM estimator.
 
-- [ ] **Step 3: Normalize external model config**
+- [x] **Step 3: Normalize external model config**
 
 In `src/lib/world-model-llm-config.ts`, add:
 
@@ -396,7 +396,7 @@ export function isExternalModelConfigured(env: ExternalModelConfigEnv = process.
 }
 ```
 
-- [ ] **Step 4: Add a composite estimator helper**
+- [x] **Step 4: Add a composite estimator helper**
 
 In `src/server/models/estimators.ts`, add:
 
@@ -436,7 +436,7 @@ for (const output of outputs) {
 
 When building a recommended link, use the first usable output for direction/relevance/likelihood/confidence and set `estimatorOutputs: outputs`.
 
-- [ ] **Step 5: Wire configured services**
+- [x] **Step 5: Wire configured services**
 
 In `src/server/services/configured.ts`, import `createCompositeLikelihoodEstimator`, `createExternalModelEstimator`, and `normalizeExternalModelConfig`. Build:
 
@@ -461,7 +461,7 @@ const likelihoodEstimator =
 
 Pass `likelihoodEstimator` into `createWorldModelServices`.
 
-- [ ] **Step 6: Run configured-services tests**
+- [x] **Step 6: Run configured-services tests**
 
 Run:
 
@@ -471,7 +471,7 @@ npx vitest run tests/server/configured-services.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 2**
+- [x] **Step 7: Commit Task 2**
 
 ```bash
 git add src/lib/world-model-llm-config.ts src/server/models/estimators.ts src/server/services/configured.ts src/server/services/world-model-services.ts tests/server/configured-services.test.ts
