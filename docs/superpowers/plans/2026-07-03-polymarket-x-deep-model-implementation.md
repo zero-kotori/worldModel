@@ -994,7 +994,7 @@ npm run build
 
 Expected: exit 0.
 
-- [ ] **Step 6: Final commit if any verification-only docs changed**
+- [x] **Step 6: Final commit if any verification-only docs changed**
 
 ```bash
 git status --short
