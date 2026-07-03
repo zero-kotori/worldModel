@@ -1,4 +1,4 @@
-import { sourcePresetDefinitions } from "@/lib/world-model-source-presets";
+import { listSourcePresets, sourcePresetDefinitions } from "@/lib/world-model-source-presets";
 
 describe("world model source presets", () => {
   it("includes a query-driven news RSS preset for automated cross-category evidence search", () => {
@@ -67,5 +67,21 @@ describe("world model source presets", () => {
     });
     expect(preset?.url).toContain("{query}");
     expect(preset?.credibility).toBeLessThan(0.6);
+  });
+
+  it("includes Polymarket priority sources and an inert X recent-search preset", () => {
+    const presets = listSourcePresets([]);
+
+    expect(presets.map((preset) => preset.id)).toEqual(
+      expect.arrayContaining(["polymarket-query", "polymarket-events-query", "x-recent-search"])
+    );
+    const xPreset = presets.find((preset) => preset.id === "x-recent-search");
+    expect(xPreset).toMatchObject({
+      kind: "SOCIAL",
+      adapter: "x_recent_search",
+      credentialRef: "X_MAIN",
+      enabled: false,
+      autoConfirm: false
+    });
   });
 });

@@ -137,6 +137,19 @@ export const sourcePresetDefinitions: SourcePresetDefinition[] = [
     autoConfirmThreshold: 0.9
   },
   {
+    id: "polymarket-events-query",
+    name: "Polymarket Events Query",
+    description: "Polymarket public event search for grouped market signals and settlement context.",
+    kind: "PREDICTION_MARKET",
+    url: "https://gamma-api.polymarket.com/events?search={query}&limit=10",
+    adapter: "polymarket_events",
+    credentialRef: undefined,
+    credibility: 0.62,
+    enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.9
+  },
+  {
     id: "reddit-public-query",
     name: "Reddit Public Query",
     description: "Public Reddit search pages for weak social discussion signals that should remain review-first.",
@@ -146,6 +159,19 @@ export const sourcePresetDefinitions: SourcePresetDefinition[] = [
     credentialRef: undefined,
     credibility: 0.42,
     enabled: true,
+    autoConfirm: false,
+    autoConfirmThreshold: 0.95
+  },
+  {
+    id: "x-recent-search",
+    name: "X Recent Search",
+    description: "X/Twitter recent-search API signals. Requires X_MAIN_BEARER_TOKEN and remains disabled by default.",
+    kind: "SOCIAL",
+    url: undefined,
+    adapter: "x_recent_search",
+    credentialRef: "X_MAIN",
+    credibility: 0.42,
+    enabled: false,
     autoConfirm: false,
     autoConfirmThreshold: 0.95
   }

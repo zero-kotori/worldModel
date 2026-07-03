@@ -15,10 +15,18 @@ LLM_PROVIDER="deepseek"
 LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY=""
 LLM_MODEL="deepseek-chat"
+EXTERNAL_MODEL_ENDPOINT=""
+EXTERNAL_MODEL_API_KEY=""
+EXTERNAL_MODEL_MODEL=""
+EXTERNAL_MODEL_VERSION=""
+EXTERNAL_MODEL_TIMEOUT_MS="30000"
+X_MAIN_BEARER_TOKEN=""
 MODEL_ARTIFACT_DIR="./model-artifacts"
 ```
 
 DeepSeek is the default v1 scorer. For a standard DeepSeek setup, `LLM_API_KEY` is sufficient; `LLM_PROVIDER`, `LLM_BASE_URL`, and `LLM_MODEL` only need to be set when overriding the default provider, endpoint, or model.
+
+External deep-model scoring is optional and uses `EXTERNAL_MODEL_*`. It does not reuse `LLM_*` automatically, so a second model endpoint must be configured explicitly when you want dual scoring.
 
 For `myWeb` proxy hosting, set `WORLDMODEL_ACCESS_MODE="proxy"` in `worldModel` and use the same proxy secret in both apps:
 
@@ -78,7 +86,9 @@ npm run build
 ## Operational Notes
 
 - Source credentials are referenced by `credentialRef` only; real cookies, API keys, and tokens stay in environment variables or local secret files.
-- Social adapters are dry-run stubs until a platform-specific credential profile is configured.
+- Polymarket public Gamma market and event reads do not require a Polymarket API key in this phase.
+- X recent search requires an X developer app Bearer Token. Store it as `X_MAIN_BEARER_TOKEN` when using the `X_MAIN` credential reference.
+- Unsupported social adapters remain dry-run stubs until a platform-specific credential profile is configured.
 - LLM and external deep-model estimators abstain when provider credentials or endpoints are missing.
 - Source evidence quality warnings are calibration hints. Review rejected evidence and rolled-back updates, then apply the suggested credibility and auto-confirm threshold from the source row when appropriate; v1 does not rewrite source configuration without that operator action.
 - `npm run train:fetch -- --sources github,hugging_face --limit 20` refreshes only real platform samples for a faster LLM evaluation data update.
