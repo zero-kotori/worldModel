@@ -220,6 +220,103 @@ describe("observation source adapters", () => {
     ]);
   });
 
+  it("collects X recent-search observations with a bearer token credential ref", async () => {
+    const requested: Array<{ url: string; authorization: string | null }> = [];
+    const adapter = createSourceAdapter("SOCIAL", {
+      fetchImpl: async (url, init) => {
+        requested.push({
+          url: String(url),
+          authorization: new Headers(init?.headers).get("authorization")
+        });
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "1800000000000000001",
+                text: "AI agents are changing enterprise workflows.",
+                author_id: "42",
+                created_at: "2026-07-03T01:02:03.000Z",
+                lang: "en",
+                public_metrics: { retweet_count: 2, reply_count: 3, like_count: 10, quote_count: 1 },
+                possibly_sensitive: false
+              }
+            ],
+            includes: { users: [{ id: "42", username: "builder", name: "Builder" }] }
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      },
+      env: {
+        X_MAIN_BEARER_TOKEN: "x-test-token"
+      }
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "X recent search",
+        adapter: "x_recent_search",
+        credentialRef: "X_MAIN",
+        queries: ["AI agents enterprise"]
+      })
+    ).resolves.toEqual([
+      {
+        title: "X: AI agents are changing enterprise workflows.",
+        content: "AI agents are changing enterprise workflows. @builder Likes: 10 Reposts: 2 Replies: 3 Quotes: 1",
+        url: "https://x.com/builder/status/1800000000000000001",
+        author: "builder",
+        publishedAt: new Date("2026-07-03T01:02:03.000Z"),
+        sourceMetadata: {
+          adapter: "SOCIAL",
+          query: "AI agents enterprise",
+          source: "x_recent_search",
+          tweetId: "1800000000000000001",
+          authorId: "42",
+          username: "builder",
+          lang: "en",
+          possiblySensitive: false,
+          publicMetrics: { retweet_count: 2, reply_count: 3, like_count: 10, quote_count: 1 }
+        }
+      }
+    ]);
+    expect(requested[0].authorization).toBe("Bearer x-test-token");
+    expect(requested[0].url).toContain("https://api.x.com/2/tweets/search/recent");
+    expect(requested[0].url).toContain("query=AI%20agents%20enterprise");
+  });
+
+  it("keeps X recent-search credential refs inert when the bearer token is missing", async () => {
+    const adapter = createSourceAdapter("SOCIAL", {
+      fetchImpl: async () => {
+        throw new Error("fetch should not be called without a token");
+      },
+      env: {}
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "X recent search",
+        adapter: "x_recent_search",
+        credentialRef: "X_MAIN",
+        queries: ["AI agents"]
+      })
+    ).resolves.toEqual([]);
+  });
+
+  it("does not leak X bearer tokens when recent-search requests fail", async () => {
+    const adapter = createSourceAdapter("SOCIAL", {
+      fetchImpl: async () => new Response("token x-secret-token forbidden", { status: 401 }),
+      env: { X_MAIN_BEARER_TOKEN: "x-secret-token" }
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "X recent search",
+        adapter: "x_recent_search",
+        credentialRef: "X_MAIN",
+        queries: ["AI agents"]
+      })
+    ).rejects.toThrow("X recent search failed with status 401");
+  });
+
   it("fetches GitHub repository search results from generated evidence queries", async () => {
     const requestedUrls: string[] = [];
     const adapter = createSourceAdapter("GITHUB", {

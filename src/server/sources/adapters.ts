@@ -28,6 +28,7 @@ export type AdapterDependencies = {
   fetchText?: (url: string) => Promise<string>;
   fetchImpl?: typeof fetch;
   fallbackFetchText?: (url: string) => Promise<string>;
+  env?: Record<string, string | undefined>;
 };
 
 const DEFAULT_SOURCE_FETCH_TIMEOUT_MS = 30_000;
@@ -613,6 +614,117 @@ async function fetchPlatformQueryObservations(
   throw new Error(`All ${urls.length} ${kind} query fetches failed for ${source.name}: ${reason}`);
 }
 
+function credentialEnvName(ref: string | undefined, suffix: string) {
+  const normalized = ref?.trim().replaceAll(/[^a-zA-Z0-9_]/g, "_").toUpperCase();
+  return normalized ? `${normalized}_${suffix}` : "";
+}
+
+function xBearerToken(source: AdapterSourceConfig, env: Record<string, string | undefined>) {
+  const name = credentialEnvName(source.credentialRef, "BEARER_TOKEN");
+  return name ? env[name]?.trim() ?? "" : "";
+}
+
+function xRecentSearchUrl(query: string) {
+  return [
+    `https://api.x.com/2/tweets/search/recent?query=${encodeURIComponent(query)}`,
+    "max_results=10",
+    "tweet.fields=created_at,author_id,lang,public_metrics,possibly_sensitive",
+    "expansions=author_id",
+    "user.fields=username,name"
+  ].join("&");
+}
+
+function redactSecret(message: string, secret: string) {
+  return secret ? message.replaceAll(secret, "[redacted]") : message;
+}
+
+function parseXRecentSearchObservations(body: unknown, query: string): RawObservation[] {
+  const parsed = objectValue(body);
+  const posts = recordArrayValue(parsed?.data);
+  const includes = objectValue(parsed?.includes);
+  const users = new Map(recordArrayValue(includes?.users).flatMap((user) => {
+    const id = stringField(user, "id");
+    return id ? [[id, user] as const] : [];
+  }));
+
+  return posts.flatMap((post) => {
+    const id = stringField(post, "id");
+    const text = stringField(post, "text");
+    if (!id || !text) return [];
+    const authorId = stringField(post, "author_id");
+    const user = authorId ? users.get(authorId) : undefined;
+    const username = user ? stringField(user, "username") : undefined;
+    const metrics = objectValue(post.public_metrics);
+    const retweets = metrics ? numberField(metrics, "retweet_count") : undefined;
+    const replies = metrics ? numberField(metrics, "reply_count") : undefined;
+    const likes = metrics ? numberField(metrics, "like_count") : undefined;
+    const quotes = metrics ? numberField(metrics, "quote_count") : undefined;
+    const publishedAt = dateField(post, "created_at");
+
+    return [
+      {
+        title: `X: ${text}`,
+        content: contentFromParts([
+          text,
+          username ? `@${username}` : undefined,
+          likes === undefined ? undefined : `Likes: ${likes}`,
+          retweets === undefined ? undefined : `Reposts: ${retweets}`,
+          replies === undefined ? undefined : `Replies: ${replies}`,
+          quotes === undefined ? undefined : `Quotes: ${quotes}`
+        ]),
+        url: username ? `https://x.com/${username}/status/${id}` : `https://x.com/i/web/status/${id}`,
+        author: username,
+        publishedAt,
+        sourceMetadata: {
+          adapter: "SOCIAL",
+          query,
+          source: "x_recent_search",
+          tweetId: id,
+          ...(authorId ? { authorId } : {}),
+          ...(username ? { username } : {}),
+          ...(stringField(post, "lang") ? { lang: stringField(post, "lang") } : {}),
+          ...(booleanField(post, "possibly_sensitive") === undefined
+            ? {}
+            : { possiblySensitive: booleanField(post, "possibly_sensitive") }),
+          ...(metrics ? { publicMetrics: metrics } : {})
+        }
+      }
+    ];
+  });
+}
+
+async function fetchXRecentSearchObservations(source: AdapterSourceConfig, dependencies: AdapterDependencies): Promise<RawObservation[]> {
+  const token = xBearerToken(source, dependencies.env ?? process.env);
+  if (!token) return [];
+  const queries = source.queries?.filter(Boolean) ?? [];
+  if (queries.length === 0) return [];
+  const fetcher = dependencies.fetchImpl ?? fetch;
+  const observations: RawObservation[] = [];
+
+  for (const query of queries) {
+    const url = xRecentSearchUrl(query);
+    let response: Response;
+    try {
+      response = await fetcher(url, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${token}`,
+          accept: "application/json"
+        }
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`X recent search failed: ${redactSecret(message, token)}`);
+    }
+    if (!response.ok) {
+      throw new Error(`X recent search failed with status ${response.status}`);
+    }
+    observations.push(...parseXRecentSearchObservations(await response.json(), query));
+  }
+
+  return observations;
+}
+
 export function createSourceAdapter(kind: ObservationSourceKind, dependencies: AdapterDependencies = {}): SourceAdapter {
   const fetchText =
     dependencies.fetchText ??
@@ -648,6 +760,9 @@ export function createSourceAdapter(kind: ObservationSourceKind, dependencies: A
     return {
       kind,
       async fetch(source) {
+        if (source.adapter === "x_recent_search") {
+          return fetchXRecentSearchObservations(source, dependencies);
+        }
         if (!source.url) return [];
         return createFetchAdapter(kind, dependencies).fetch(source);
       }
