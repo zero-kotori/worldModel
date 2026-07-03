@@ -12,7 +12,7 @@ import { normalizeMutuallyExclusive } from "@/domain/bayes";
 import type { EstimatorOutput } from "@/domain/likelihood";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
 import { getSourcePreset, listSourcePresets, sourcePresetDefinitions } from "@/lib/world-model-source-presets";
-import type { LikelihoodEstimator } from "@/server/models/estimators";
+import type { EstimatorResult, LikelihoodEstimator } from "@/server/models/estimators";
 import { createRecordId } from "@/server/services/in-memory-store";
 import { createSourceAdapter, type AdapterDependencies } from "@/server/sources/adapters";
 import type {
@@ -391,6 +391,10 @@ function isUsableEstimatorOutput(output: EstimatorOutput) {
     output.confidence > 0 &&
     output.confidence <= 1
   );
+}
+
+function normalizeEstimatorResult(result: EstimatorResult): EstimatorOutput[] {
+  return Array.isArray(result) ? result : [result];
 }
 
 function estimatorDirection(output: EstimatorOutput): "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL" {
@@ -1141,7 +1145,7 @@ export function createWorldModelServices(
       let sawUsableOutput = false;
 
       for (const candidate of llmCandidates) {
-        const output = await options.likelihoodEstimator.estimate({
+        const outputs = normalizeEstimatorResult(await options.likelihoodEstimator.estimate({
           evidenceText: `${observation.title}\n${observation.content}`,
           hypothesis: candidate.hypothesis.proposition,
           category: candidate.belief.category,
@@ -1149,15 +1153,17 @@ export function createWorldModelServices(
           evidencePublishedAt: observation.publishedAt,
           evidenceObservedAt: observation.observedAt,
           context: `${candidate.belief.title}\n${candidate.belief.description}\n${candidate.hypothesis.notes}\n${candidate.hypothesis.evidenceSearchQuery ?? ""}`
-        });
+        }));
 
         candidateEvaluation.attemptedCount += 1;
-        if (output.rationale?.trim()) {
-          candidateEvaluation.latestRationale = output.rationale.trim();
+        const latestRationale = outputs.find((output) => output.rationale?.trim())?.rationale?.trim();
+        if (latestRationale) {
+          candidateEvaluation.latestRationale = latestRationale;
         }
 
-        if (!isUsableEstimatorOutput(output)) {
-          if (output.abstain) {
+        const output = outputs.find(isUsableEstimatorOutput);
+        if (!output) {
+          if (outputs.some((candidateOutput) => candidateOutput.abstain)) {
             candidateEvaluation.abstainedCount += 1;
           } else {
             candidateEvaluation.rejectedCount += 1;
@@ -1185,7 +1191,7 @@ export function createWorldModelServices(
               output.rationale ??
               `LLM 自动关联到「${candidate.belief.title}」下的假设：${candidate.hypothesis.proposition}`,
             ...(output.reviewRequired ? { reviewRequired: true } : {}),
-            estimatorOutputs: [output]
+            estimatorOutputs: outputs
           }
         });
       }

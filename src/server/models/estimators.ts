@@ -12,7 +12,14 @@ export type EstimatorInput = {
   context?: string;
 };
 
+export type EstimatorResult = EstimatorOutput | EstimatorOutput[];
+
 export type LikelihoodEstimator = {
+  name: string;
+  estimate(input: EstimatorInput): Promise<EstimatorResult>;
+};
+
+type SingleLikelihoodEstimator = {
   name: string;
   estimate(input: EstimatorInput): Promise<EstimatorOutput>;
 };
@@ -28,7 +35,7 @@ function countTerms(text: string, terms: string[]) {
   return terms.filter((term) => normalized.includes(term.toLowerCase())).length;
 }
 
-export function createLightweightEstimator(artifact: LightweightArtifact | null): LikelihoodEstimator {
+export function createLightweightEstimator(artifact: LightweightArtifact | null): SingleLikelihoodEstimator {
   return {
     name: "lightweight",
     async estimate(input) {
@@ -66,7 +73,7 @@ export function createLlmEstimator(config: {
   model?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
-}): LikelihoodEstimator {
+}): SingleLikelihoodEstimator {
   return {
     name: "llm",
     async estimate(input) {
@@ -140,6 +147,20 @@ export function createLlmEstimator(config: {
       } finally {
         if (timeout) clearTimeout(timeout);
       }
+    }
+  };
+}
+
+export function createCompositeLikelihoodEstimator(estimators: LikelihoodEstimator[]): LikelihoodEstimator {
+  return {
+    name: estimators.map((estimator) => estimator.name).join("+"),
+    async estimate(input) {
+      const outputs: EstimatorOutput[] = [];
+      for (const estimator of estimators) {
+        const result = await estimator.estimate(input);
+        outputs.push(...(Array.isArray(result) ? result : [result]));
+      }
+      return outputs;
     }
   };
 }
@@ -307,7 +328,7 @@ export function createExternalModelEstimator(config: {
   version?: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
-}): LikelihoodEstimator {
+}): SingleLikelihoodEstimator {
   return {
     name: "external-deep-model",
     async estimate(input) {

@@ -15,7 +15,7 @@ function llmEvaluationArtifact(overrides: Partial<{
   fallbackDivergenceRate: number | null;
 }> = {}) {
   return {
-    generatedAt: new Date("2026-06-18T01:00:00.000Z"),
+    generatedAt: new Date(),
     samplesPath: "model-artifacts/training-samples.jsonl",
     summary: {
       modelName: "deepseek:deepseek-v4-flash",
@@ -135,6 +135,74 @@ describe("configured world model services", () => {
       rationale: "LLM configured estimator result"
     });
     expect(updated?.hypotheses[0].currentProbability).toBeLessThan(0.5);
+  });
+
+  it("includes configured external deep-model outputs while keeping the main LLM scorer", async () => {
+    const calls: string[] = [];
+    const services = createConfiguredWorldModelServices(createInMemoryWorldModelStore(), {
+      env: {
+        LLM_PROVIDER: "deepseek",
+        LLM_BASE_URL: "https://llm.example",
+        LLM_API_KEY: "llm-key",
+        LLM_MODEL: "llm-model",
+        EXTERNAL_MODEL_ENDPOINT: "https://external.example/v1",
+        EXTERNAL_MODEL_API_KEY: "external-key",
+        EXTERNAL_MODEL_MODEL: "external-model",
+        EXTERNAL_MODEL_VERSION: "external-v1"
+      },
+      async llmFetch(input) {
+        calls.push(String(input));
+        return new Response(
+          JSON.stringify({
+            model: String(input).includes("external.example") ? "external-model" : "llm-model",
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    direction: "SUPPORTS",
+                    relevance: String(input).includes("external.example") ? 0.82 : 0.9,
+                    likelihoodRatio: String(input).includes("external.example") ? 2.1 : 2.4,
+                    confidence: String(input).includes("external.example") ? 0.7 : 0.8,
+                    rationale: String(input).includes("external.example") ? "External model signal" : "LLM signal"
+                  })
+                }
+              }
+            ]
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      },
+      sourceAdapterDependencies: {
+        async fetchText() {
+          return "<html><head><title>AI agents accelerate engineering teams</title></head><body>AI agents accelerate engineering teams.</body></html>";
+        }
+      },
+      autoApplyPolicy: async (input) => input
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: balancedAgentHypotheses()
+    });
+    const source = await services.sources.createSource({
+      name: "Configured source",
+      kind: "WEB_PAGE",
+      url: "https://example.test/agent-signal",
+      adapter: "web_page",
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+
+    await services.automation.runEvidenceLoop({ beliefIds: [belief.id], sourceIds: [source.id], autoConfirmThreshold: 0.2 });
+    const [run] = await services.likelihood.listRuns();
+
+    expect(calls.some((url) => url.includes("https://llm.example"))).toBe(true);
+    expect(calls.some((url) => url.includes("https://external.example"))).toBe(true);
+    expect(run.estimatorOutputs.map((output) => output.estimator)).toEqual(["llm", "external-deep-model"]);
   });
 
   it("uses configured LLM hypothesis recommendations by default when credentials are configured", async () => {

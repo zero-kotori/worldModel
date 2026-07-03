@@ -1,8 +1,12 @@
-import { createConfiguredLlmEstimator } from "@/server/models/estimators";
+import {
+  createCompositeLikelihoodEstimator,
+  createConfiguredLlmEstimator,
+  createExternalModelEstimator
+} from "@/server/models/estimators";
 import { createConfiguredLlmHypothesisRecommendationGenerator } from "@/server/models/hypothesis-recommendations";
 import { guardAutoApplyWithLlmEvaluation } from "@/server/automation/auto-apply-policy";
 import { isHypothesisCurrentlyEffective } from "@/lib/world-model-beliefs-ui";
-import { isLlmHypothesisRecommendationsDisabled } from "@/lib/world-model-llm-config";
+import { isLlmHypothesisRecommendationsDisabled, normalizeExternalModelConfig } from "@/lib/world-model-llm-config";
 import { sourceEvidenceQualityAutoApplyRisk } from "@/lib/world-model-sources-ui";
 import { createWorldModelServices, type WorldModelServiceOptions } from "@/server/services/world-model-services";
 import type { WorldModelStore } from "@/server/services/types";
@@ -71,9 +75,26 @@ export function createConfiguredWorldModelServices(
   store: WorldModelStore,
   options: ConfiguredWorldModelServiceOptions = {}
 ) {
+  const llmEstimator = createConfiguredLlmEstimator(options.env, options.llmFetch);
+  const externalConfig = normalizeExternalModelConfig(options.env);
+  const likelihoodEstimator =
+    externalConfig.endpoint && externalConfig.model
+      ? createCompositeLikelihoodEstimator([
+          llmEstimator,
+          createExternalModelEstimator({
+            endpoint: externalConfig.endpoint,
+            apiKey: externalConfig.apiKey,
+            model: externalConfig.model,
+            version: externalConfig.version,
+            fetch: options.llmFetch,
+            timeoutMs: externalConfig.timeoutMs ?? 30_000
+          })
+        ])
+      : llmEstimator;
+
   return createWorldModelServices(store, {
     sourceAdapterDependencies: options.sourceAdapterDependencies,
-    likelihoodEstimator: createConfiguredLlmEstimator(options.env, options.llmFetch),
+    likelihoodEstimator,
     hypothesisRecommendationGenerator:
       options.hypothesisRecommendationGenerator ??
       (isLlmHypothesisRecommendationsDisabled(options.env)
