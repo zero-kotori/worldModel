@@ -53,6 +53,18 @@ The following items are intentionally deferred:
 
 The implementation may still perform a minimal `source-service.ts` / `automation-service.ts` extraction if needed to keep new source and automation code from further growing the composition root, but that extraction is a support task, not a full service-layer rewrite.
 
+## Confirmed Automation Defaults
+
+The longer-term deployment target is a Linux server. Production worker packaging is still deferred from this implementation phase, but the later deployment design should prefer Linux-native process management such as a systemd service and timer, or an equivalent container restart policy if the app is deployed through Docker.
+
+Expired hypotheses remain manually settled by default. The automation loop may collect settlement-review observations and route them to the review queue, but it must not automatically mark hypotheses as `RESOLVED_TRUE` or `RESOLVED_FALSE`.
+
+The default evidence-loop posture is review-first. Candidate evidence should enter the review queue unless the operator explicitly enables auto-apply for a run, source, or worker configuration. Auto-apply remains available as a switch, and it must continue to pass the existing effective-hypothesis, balanced-coverage, source-quality, and LLM-evaluation guards.
+
+Periodic training-data refresh and LLM evaluation refresh are not part of this phase. Existing `train:fetch`, `train:evaluate`, and related scripts remain manually triggered until a separate low-frequency maintenance automation phase is approved.
+
+Unmatched observations may generate hypothesis recommendations. The system may surface recommendation drafts from unmatched observations, but it must not automatically create active hypotheses from them.
+
 ## Scope
 
 ### Included
@@ -69,7 +81,7 @@ The implementation may still perform a minimal `source-service.ts` / `automation
 - Trading, order placement, wallet signing, positions, or private Polymarket account APIs.
 - Browser automation or cookie-based X scraping.
 - Reddit and Telegram adapters.
-- Production worker deployment packaging.
+- Production worker deployment packaging for the later Linux server target.
 - Storing API keys, bearer tokens, cookies, or local secret file contents in the database.
 - Full rewrite of all service modules in one pass.
 
