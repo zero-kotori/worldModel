@@ -841,7 +841,7 @@ git commit -m "feat: add x recent search adapter"
 - Modify: `tests/lib/world-model-source-presets.test.ts`
 - Modify: `docs/ai/world-model-rollout.md`
 
-- [ ] **Step 1: Write failing preset test**
+- [x] **Step 1: Write failing preset test**
 
 Add to `tests/lib/world-model-source-presets.test.ts`:
 
@@ -862,7 +862,7 @@ it("includes Polymarket priority sources and an inert X recent-search preset", (
 });
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -872,7 +872,7 @@ npx vitest run tests/lib/world-model-source-presets.test.ts -t "Polymarket prior
 
 Expected: FAIL because `polymarket-events-query` and `x-recent-search` are not present.
 
-- [ ] **Step 3: Add presets**
+- [x] **Step 3: Add presets**
 
 In `src/lib/world-model-source-presets.ts`, add:
 
@@ -905,7 +905,7 @@ In `src/lib/world-model-source-presets.ts`, add:
 }
 ```
 
-- [ ] **Step 4: Add non-secret env examples**
+- [x] **Step 4: Add non-secret env examples**
 
 In `.env.example`, add:
 
@@ -918,7 +918,7 @@ EXTERNAL_MODEL_TIMEOUT_MS="30000"
 X_MAIN_BEARER_TOKEN=""
 ```
 
-- [ ] **Step 5: Update rollout notes**
+- [x] **Step 5: Update rollout notes**
 
 In `docs/ai/world-model-rollout.md`, add operational notes:
 
@@ -928,7 +928,7 @@ In `docs/ai/world-model-rollout.md`, add operational notes:
 - External deep-model scoring is optional and uses `EXTERNAL_MODEL_*`; it does not reuse `LLM_*` automatically.
 ```
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run:
 
@@ -938,7 +938,7 @@ npx vitest run tests/lib/world-model-source-presets.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Task 5**
+- [x] **Step 7: Commit Task 5**
 
 ```bash
 git add .env.example src/lib/world-model-source-presets.ts tests/lib/world-model-source-presets.test.ts docs/ai/world-model-rollout.md
