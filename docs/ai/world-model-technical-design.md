@@ -524,6 +524,8 @@ API 仅面向后台 UI 使用。
 
 ## 9. UI 设计
 
+详细使用路径见 `docs/ai/world-model-ui-guide.md`。
+
 后台 UI 页面：
 
 - `/admin/world-model`
