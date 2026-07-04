@@ -1432,6 +1432,114 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("plans source-specific evidence loop queries for comparison hypotheses", async () => {
+    const requestedUrls: string[] = [];
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async (url) => {
+          requestedUrls.push(url);
+          if (url.includes("gamma-api.polymarket.com")) {
+            return JSON.stringify({ markets: [] });
+          }
+          return "<html><head><title>GPT Claude benchmark</title></head><body>GPT and Claude benchmark comparison.</body></html>";
+        }
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "gpt 暴打 claude",
+      category: "AI_TREND",
+      description: "Track whether OpenAI models outperform Anthropic Claude.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "gpt 6 > claude mythos",
+          priorProbability: 0.5,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    await services.sources.createSource({
+      name: "Generic search",
+      kind: "SEARCH",
+      url: "https://example.com/search?q={query}",
+      adapter: "search",
+      credibility: 0.7,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.8
+    });
+    await services.sources.createSource({
+      name: "Polymarket",
+      kind: "PREDICTION_MARKET",
+      url: "https://gamma-api.polymarket.com/markets?search={query}&limit=10&active=true&closed=false",
+      adapter: "polymarket_markets",
+      credibility: 0.6,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.8
+    });
+
+    const loop = await services.automation.runEvidenceLoop({ reviewOnly: true });
+    const genericUrls = requestedUrls.filter((url) => url.includes("example.com/search"));
+    const predictionUrls = requestedUrls.filter((url) => url.includes("gamma-api.polymarket.com"));
+    const decodedGenericQueries = genericUrls.map((url) => decodeURIComponent(new URL(url).searchParams.get("q") ?? ""));
+    const decodedPredictionQueries = predictionUrls.map((url) => decodeURIComponent(new URL(url).searchParams.get("search") ?? ""));
+
+    expect(loop.queries.some((query) => query.plannerStrategy === "RULE_COMPARISON")).toBe(true);
+    expect(decodedGenericQueries).toContain("GPT-6 vs Claude Mythos benchmark");
+    expect(decodedPredictionQueries).toContain("Will GPT-6 outperform Claude Mythos?");
+    expect(decodedPredictionQueries.join(" ")).not.toContain("暴打");
+    expect(decodedPredictionQueries.join(" ")).not.toContain(">");
+  });
+
+  it("uses an injected evidence query planner before rule-based query planning", async () => {
+    const requestedUrls: string[] = [];
+    const plannerInputs: Array<{ baseQuery: string; proposition: string }> = [];
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      evidenceQueryPlanner: (input) => {
+        plannerInputs.push({ baseQuery: input.baseQuery, proposition: input.hypothesis.proposition });
+        return [
+          {
+            query: "custom semantic planner query",
+            strategy: "LLM",
+            purpose: "GENERAL",
+            sourceKinds: ["SEARCH"]
+          }
+        ];
+      },
+      sourceAdapterDependencies: {
+        fetchText: async (url) => {
+          requestedUrls.push(url);
+          return "<html><head><title>Custom planner result</title></head><body>Custom semantic planner query evidence.</body></html>";
+        }
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "gpt 暴打 claude",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [{ proposition: "gpt 6 > claude mythos", priorProbability: 0.5, stance: "SUPPORTS", notes: "" }]
+    });
+    await services.sources.createSource({
+      name: "Generic search",
+      kind: "SEARCH",
+      url: "https://example.com/search?q={query}",
+      adapter: "search",
+      credibility: 0.7,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.8
+    });
+
+    const loop = await services.automation.runEvidenceLoop({ reviewOnly: true });
+
+    expect(plannerInputs).toEqual([{ baseQuery: "gpt 暴打 claude gpt 6 > claude mythos", proposition: "gpt 6 > claude mythos" }]);
+    expect(loop.queries[0]).toMatchObject({ query: "custom semantic planner query", plannerStrategy: "LLM" });
+    expect(decodeURIComponent(new URL(requestedUrls[0]).searchParams.get("q") ?? "")).toBe("custom semantic planner query");
+  });
+
   it("does not auto-apply fetched source observations to beliefs outside the loop scope", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {

@@ -38,6 +38,7 @@ import {
   hypothesisSettlementSearchQuery,
   queryHintScore
 } from "@/server/services/internal/evidence-queries";
+import { planEvidenceLoopQueriesWithFallback } from "@/server/services/internal/query-planner";
 import { createSourceAdapter } from "@/server/sources/adapters";
 import type {
   BeliefRecord,
@@ -254,6 +255,11 @@ function queryContextByQuery(queries: EvidenceLoopQuery[]) {
   return new Map(queries.map((query) => [query.query, query] as const));
 }
 
+function sourceScopedQueries(queries: EvidenceLoopQuery[], source: Pick<ObservationSourceRecord, "kind">) {
+  const scoped = queries.filter((query) => !query.sourceKinds || query.sourceKinds.length === 0 || query.sourceKinds.includes(source.kind));
+  return scoped.length > 0 ? scoped : queries;
+}
+
 function observationMetadataWithQueryContext(
   metadata: Record<string, unknown> | undefined,
   queriesByText: Map<string, EvidenceLoopQuery>
@@ -271,6 +277,9 @@ function observationMetadataWithQueryContext(
     ...(query.hypothesisCode ? { queryHypothesisCode: query.hypothesisCode } : {}),
     queryCategory: query.category,
     ...(query.purpose ? { queryPurpose: query.purpose } : {}),
+    ...(query.plannerStrategy ? { queryPlannerStrategy: query.plannerStrategy } : {}),
+    ...(query.plannerPurpose ? { queryPlannerPurpose: query.plannerPurpose } : {}),
+    ...(query.baseQuery ? { queryBaseQuery: query.baseQuery } : {}),
     ...(query.priority !== undefined ? { queryPriority: query.priority } : {}),
     ...(query.priorityReason ? { queryPriorityReason: query.priorityReason } : {}),
     ...(query.uncertainty !== undefined ? { queryUncertainty: query.uncertainty } : {}),
@@ -698,10 +707,8 @@ export function createSourceWorkflow(
       for (const hypothesis of belief.hypotheses) {
         const settlementDue = isSettlementReviewDueHypothesis(hypothesis, referenceTime);
         if (!isCurrentlyEffectiveHypothesis(hypothesis, referenceTime) && !settlementDue) continue;
-        const query = settlementDue ? hypothesisSettlementSearchQuery(belief, hypothesis) : hypothesisEvidenceSearchQuery(belief, hypothesis);
-        const key = `${hypothesis.id}:${query}`;
-        if (!query || seen.has(key)) continue;
-        seen.add(key);
+        const baseQuery = settlementDue ? hypothesisSettlementSearchQuery(belief, hypothesis) : hypothesisEvidenceSearchQuery(belief, hypothesis);
+        if (!baseQuery) continue;
         const coverage = evidenceCoverage.get(hypothesis.id) ?? {
           evidenceCount: 0,
           supportEvidenceCount: 0,
@@ -711,37 +718,52 @@ export function createSourceWorkflow(
           linkCount: 0
         };
         const calibration = calibrationPressure.get(belief.id);
-        queries.push({
+        const queryPriority = settlementDue
+          ? {
+              purpose: "SETTLEMENT_REVIEW" as const,
+              priority: 1,
+              priorityReason: "settlement review due",
+              settlementDue: true,
+              expiresAt: hypothesis.expiresAt?.toISOString(),
+              ...(hypothesis.expiryCondition ? { expiryCondition: hypothesis.expiryCondition } : {})
+            }
+          : {
+              purpose: "EVIDENCE" as const,
+              ...evidenceLoopQueryPriority(
+                hypothesis,
+                coverage,
+                calibration
+                  ? {
+                      ...calibration,
+                      hypothesisCode: readableCode(hypothesisCodes, calibration.hypothesisId, "H")
+                    }
+                  : undefined,
+                referenceTime
+              )
+            };
+        const plannedQueries = await planEvidenceLoopQueriesWithFallback(
+          { belief, hypothesis, baseQuery, settlementDue },
+          options.evidenceQueryPlanner
+        );
+        for (const [plannerRank, plannedQuery] of plannedQueries.entries()) {
+          const key = `${hypothesis.id}:${plannedQuery.purpose}:${plannedQuery.query}`;
+          if (!plannedQuery.query || seen.has(key)) continue;
+          seen.add(key);
+          queries.push({
           beliefId: belief.id,
           beliefCode: readableCode(beliefCodes, belief.id, "B"),
           hypothesisId: hypothesis.id,
           hypothesisCode: readableCode(hypothesisCodes, hypothesis.id, "H"),
           category: belief.category,
-          query,
-          ...(settlementDue
-            ? {
-                purpose: "SETTLEMENT_REVIEW" as const,
-                priority: 1,
-                priorityReason: "settlement review due",
-                settlementDue: true,
-                expiresAt: hypothesis.expiresAt?.toISOString(),
-                ...(hypothesis.expiryCondition ? { expiryCondition: hypothesis.expiryCondition } : {})
-              }
-            : {
-                purpose: "EVIDENCE" as const,
-                ...evidenceLoopQueryPriority(
-                  hypothesis,
-                  coverage,
-                  calibration
-                    ? {
-                        ...calibration,
-                        hypothesisCode: readableCode(hypothesisCodes, calibration.hypothesisId, "H")
-                      }
-                    : undefined,
-                  referenceTime
-                )
-              })
-        });
+            query: plannedQuery.query,
+            baseQuery,
+            plannerStrategy: plannedQuery.strategy,
+            plannerPurpose: plannedQuery.purpose,
+            plannerRank,
+            sourceKinds: plannedQuery.sourceKinds,
+            ...queryPriority
+          });
+        }
       }
     }
 
@@ -753,6 +775,7 @@ export function createSourceWorkflow(
           Number(Boolean(b.query.counterEvidenceGap)) - Number(Boolean(a.query.counterEvidenceGap)) ||
           Number(b.query.staleEvidenceDays !== undefined) - Number(a.query.staleEvidenceDays !== undefined) ||
           Number(Boolean(b.query.fragileCertainty)) - Number(Boolean(a.query.fragileCertainty)) ||
+          (a.query.plannerRank ?? 0) - (b.query.plannerRank ?? 0) ||
           a.index - b.index
       )
       .map((item) => item.query);
@@ -859,12 +882,15 @@ export function createSourceWorkflow(
 
     const beliefIds = new Set(runOptions.beliefIds?.filter(Boolean));
     const querySummary =
-      runOptions.queries ??
+      (runOptions.queries ? sourceScopedQueries(runOptions.queries, source) : undefined) ??
       (sourceSupportsGeneratedQueries(source)
-        ? await generateEvidenceLoopQueries({
-            beliefIds: runOptions.beliefIds,
-            maxQueries: runOptions.maxQueries
-          })
+        ? sourceScopedQueries(
+            await generateEvidenceLoopQueries({
+              beliefIds: runOptions.beliefIds,
+              maxQueries: runOptions.maxQueries
+            }),
+            source
+          )
         : []);
     const startedAt = now();
     try {

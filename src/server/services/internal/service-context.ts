@@ -1,5 +1,6 @@
 import type { LikelihoodEstimator } from "@/server/models/estimators";
 import type { AdapterDependencies } from "@/server/sources/adapters";
+import type { EvidenceQueryPlanner } from "@/server/services/internal/query-planner";
 import type { HypothesisRecommendationGenerator, WorldModelStore } from "@/server/services/types";
 
 export type AutoApplyPolicyInput = {
@@ -14,6 +15,7 @@ export type WorldModelServiceOptions = {
   sourceAdapterDependencies?: AdapterDependencies;
   likelihoodEstimator?: LikelihoodEstimator;
   hypothesisRecommendationGenerator?: HypothesisRecommendationGenerator;
+  evidenceQueryPlanner?: EvidenceQueryPlanner;
   autoApplyPolicy?: (input: AutoApplyPolicyInput) => AutoApplyPolicyInput | Promise<AutoApplyPolicyInput>;
 };
 

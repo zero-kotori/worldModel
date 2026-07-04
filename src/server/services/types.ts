@@ -215,6 +215,11 @@ export type EvidenceLoopQuery = {
   category: BeliefCategory;
   purpose?: "EVIDENCE" | "SETTLEMENT_REVIEW";
   query: string;
+  plannerStrategy?: "LLM" | "MANUAL" | "RULE_BASE" | "RULE_COMPARISON" | "SETTLEMENT";
+  plannerPurpose?: "GENERAL" | "PREDICTION_MARKET";
+  plannerRank?: number;
+  baseQuery?: string;
+  sourceKinds?: ObservationSourceKind[];
   priority?: number;
   priorityReason?: string;
   uncertainty?: number;
