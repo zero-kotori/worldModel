@@ -330,11 +330,41 @@ function isSourceOnlyGraphData(data: WorldModelGraphSourceData) {
   );
 }
 
+function graphableBeliefs(beliefs: BeliefRecord[]) {
+  return beliefs
+    .filter((belief) => belief.status !== "ARCHIVED")
+    .map((belief) => ({
+      ...belief,
+      hypotheses: belief.hypotheses.filter((hypothesis) => hypothesis.status !== "ARCHIVED")
+    }));
+}
+
+function graphableEvidence(evidence: EvidenceRecord[], visibleHypothesisIds: Set<string>) {
+  return evidence.flatMap((item) => {
+    if (item.status === "DELETED") return [];
+    const links = item.links.filter((link) => visibleHypothesisIds.has(link.hypothesisId));
+    return links.length > 0 ? [{ ...item, links }] : [];
+  });
+}
+
+function graphableUpdates(
+  updates: BayesianUpdateEventRecord[],
+  visibleBeliefIds: Set<string>,
+  visibleEvidenceIds: Set<string>
+) {
+  return updates.filter((event) => visibleBeliefIds.has(event.beliefId) && visibleEvidenceIds.has(event.evidenceId));
+}
+
 export function createWorldModelGraph(data: WorldModelGraphSourceData, codeSourceData: WorldModelGraphSourceData = data): WorldModelGraph {
-  const beliefs = data.beliefs;
+  const beliefs = graphableBeliefs(data.beliefs);
   const hypotheses = beliefs.flatMap((belief) => belief.hypotheses);
+  const hypothesisIds = new Set(hypotheses.map((hypothesis) => hypothesis.id));
+  const beliefIds = new Set(beliefs.map((belief) => belief.id));
   const effectiveHypothesisIds = new Set(hypotheses.filter((hypothesis) => isHypothesisCurrentlyEffective(hypothesis)).map((hypothesis) => hypothesis.id));
-  const observations = graphableObservations(data.observations, data.evidence);
+  const evidence = graphableEvidence(data.evidence, hypothesisIds);
+  const evidenceIds = new Set(evidence.map((item) => item.id));
+  const updates = graphableUpdates(data.updates, beliefIds, evidenceIds);
+  const observations = graphableObservations(data.observations, evidence);
   const codeSourceObservations = graphableObservations(codeSourceData.observations, codeSourceData.evidence);
   const observationSourceIds = new Set(observations.map((observation) => observation.sourceId).filter((sourceId): sourceId is string => Boolean(sourceId)));
   const sources = isSourceOnlyGraphData(data) ? (data.sources ?? []) : (data.sources ?? []).filter((source) => observationSourceIds.has(source.id));
@@ -384,7 +414,7 @@ export function createWorldModelGraph(data: WorldModelGraphSourceData, codeSourc
       status: observation.status,
       credibility: observation.credibility
     })),
-    ...data.evidence.map((evidence) => ({
+    ...evidence.map((evidence) => ({
       id: evidence.id,
       type: "evidence" as const,
       code: readableCode(evidenceCodes, evidence.id, "E"),
@@ -392,7 +422,7 @@ export function createWorldModelGraph(data: WorldModelGraphSourceData, codeSourc
       status: evidence.status,
       credibility: evidence.credibility
     })),
-    ...data.updates.map((event) => ({
+    ...updates.map((event) => ({
       id: event.id,
       type: "update" as const,
       code: readableCode(updateCodes, event.id, "U"),
@@ -455,7 +485,7 @@ export function createWorldModelGraph(data: WorldModelGraphSourceData, codeSourc
           ]
         : [];
     }),
-    ...data.evidence.flatMap((evidence) =>
+    ...evidence.flatMap((evidence) =>
       observations.some((observation) => observation.id === evidence.observationId)
         ? [
             {
@@ -469,7 +499,7 @@ export function createWorldModelGraph(data: WorldModelGraphSourceData, codeSourc
           ]
         : []
     ),
-    ...data.evidence.flatMap((evidence) =>
+    ...evidence.flatMap((evidence) =>
       evidence.links.map((link) => ({
         id: `evidence:${evidence.id}:hypothesis:${link.hypothesisId}`,
         source: evidence.id,
@@ -487,7 +517,7 @@ export function createWorldModelGraph(data: WorldModelGraphSourceData, codeSourc
         status: evidence.status
       }))
     ),
-    ...data.updates.flatMap((event) => [
+    ...updates.flatMap((event) => [
       {
         id: `evidence:${event.evidenceId}:update:${event.id}`,
         source: event.evidenceId,
@@ -507,5 +537,6 @@ export function createWorldModelGraph(data: WorldModelGraphSourceData, codeSourc
     ])
   ];
 
-  return { nodes, edges };
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  return { nodes, edges: edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target)) };
 }

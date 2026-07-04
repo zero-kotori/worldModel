@@ -8,6 +8,287 @@ import type {
 } from "@/server/services/types";
 
 describe("world model graph", () => {
+  it("excludes archived belief subgraphs from the rendered graph", () => {
+    const createdAt = new Date("2026-06-11T00:00:00.000Z");
+    const activeBelief: BeliefRecord = {
+      id: "belief_active",
+      title: "Active belief",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      status: "ACTIVE",
+      createdAt,
+      updatedAt: createdAt,
+      hypotheses: [
+        {
+          id: "hypothesis_active",
+          beliefId: "belief_active",
+          proposition: "Active hypothesis",
+          notes: "",
+          stance: "SUPPORTS",
+          priorProbability: 0.4,
+          currentProbability: 0.4,
+          strength: 0.4,
+          status: "ACTIVE",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ]
+    };
+    const archivedBelief: BeliefRecord = {
+      ...activeBelief,
+      id: "belief_archived",
+      title: "Archived belief",
+      status: "ARCHIVED",
+      hypotheses: [
+        {
+          ...activeBelief.hypotheses[0],
+          id: "hypothesis_archived_parent",
+          beliefId: "belief_archived",
+          proposition: "Archived parent hypothesis"
+        }
+      ]
+    };
+    const archivedObservation: ObservationRecord = {
+      id: "observation_archived",
+      title: "Archived belief observation",
+      content: "Observation tied only to an archived belief.",
+      observedAt: new Date("2026-06-11T01:00:00.000Z"),
+      status: "CONFIRMED",
+      credibility: 0.7,
+      metadata: {}
+    };
+    const archivedEvidence: EvidenceRecord = {
+      id: "evidence_archived",
+      observationId: archivedObservation.id,
+      title: "Archived belief evidence",
+      content: "Evidence tied only to an archived belief.",
+      confirmedAt: new Date("2026-06-11T02:00:00.000Z"),
+      confirmationMode: "MANUAL",
+      credibility: 0.7,
+      status: "ACTIVE",
+      metadata: {},
+      links: [
+        {
+          id: "link_archived",
+          evidenceId: "evidence_archived",
+          hypothesisId: "hypothesis_archived_parent",
+          direction: "SUPPORTS",
+          relevance: 0.8,
+          likelihoodRatio: 2,
+          confidence: 0.7,
+          rationale: "Archived belief evidence should not render.",
+          createdAt
+        }
+      ]
+    };
+    const archivedUpdate: BayesianUpdateEventRecord = {
+      id: "update_archived",
+      beliefId: archivedBelief.id,
+      evidenceId: archivedEvidence.id,
+      priorSnapshot: { hypothesis_archived_parent: 0.4 },
+      posteriorSnapshot: { hypothesis_archived_parent: 0.6 },
+      mode: "APPLIED",
+      status: "APPLIED",
+      confidence: 0.7,
+      explanations: [],
+      createdAt
+    };
+
+    const graph = createWorldModelGraph({
+      beliefs: [activeBelief, archivedBelief],
+      observations: [archivedObservation],
+      evidence: [archivedEvidence],
+      updates: [archivedUpdate]
+    });
+    const nodeIds = graph.nodes.map((node) => node.id);
+
+    expect(nodeIds).toContain("belief_active");
+    expect(nodeIds).toContain("hypothesis_active");
+    expect(nodeIds).not.toContain("belief_archived");
+    expect(nodeIds).not.toContain("hypothesis_archived_parent");
+    expect(nodeIds).not.toContain("observation_archived");
+    expect(nodeIds).not.toContain("evidence_archived");
+    expect(nodeIds).not.toContain("update_archived");
+    expect(graph.edges.every((edge) => nodeIds.includes(edge.source) && nodeIds.includes(edge.target))).toBe(true);
+  });
+
+  it("excludes archived hypotheses while keeping visible sibling evidence links", () => {
+    const createdAt = new Date("2026-06-11T00:00:00.000Z");
+    const belief: BeliefRecord = {
+      id: "belief_mixed",
+      title: "Mixed hypothesis belief",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      status: "ACTIVE",
+      createdAt,
+      updatedAt: createdAt,
+      hypotheses: [
+        {
+          id: "hypothesis_visible",
+          beliefId: "belief_mixed",
+          proposition: "Visible hypothesis",
+          notes: "",
+          stance: "SUPPORTS",
+          priorProbability: 0.4,
+          currentProbability: 0.4,
+          strength: 0.4,
+          status: "ACTIVE",
+          createdAt,
+          updatedAt: createdAt
+        },
+        {
+          id: "hypothesis_archived",
+          beliefId: "belief_mixed",
+          proposition: "Archived hypothesis",
+          notes: "",
+          stance: "SUPPORTS",
+          priorProbability: 0.4,
+          currentProbability: 0.4,
+          strength: 0.4,
+          status: "ARCHIVED",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ]
+    };
+    const observation: ObservationRecord = {
+      id: "observation_mixed",
+      title: "Mixed evidence observation",
+      content: "Observation confirmed into evidence.",
+      observedAt: new Date("2026-06-11T01:00:00.000Z"),
+      status: "CONFIRMED",
+      credibility: 0.8,
+      metadata: {
+        recommendedLinks: [
+          { hypothesisId: "hypothesis_archived", direction: "SUPPORTS", relevance: 0.9, likelihoodRatio: 2.2 }
+        ]
+      }
+    };
+    const evidence: EvidenceRecord = {
+      id: "evidence_mixed",
+      observationId: observation.id,
+      title: "Mixed evidence",
+      content: "Evidence has one visible and one archived link.",
+      confirmedAt: new Date("2026-06-11T02:00:00.000Z"),
+      confirmationMode: "MANUAL",
+      credibility: 0.8,
+      status: "ACTIVE",
+      metadata: {},
+      links: [
+        {
+          id: "link_visible",
+          evidenceId: "evidence_mixed",
+          hypothesisId: "hypothesis_visible",
+          direction: "SUPPORTS",
+          relevance: 0.8,
+          likelihoodRatio: 2,
+          confidence: 0.7,
+          rationale: "Visible link.",
+          createdAt
+        },
+        {
+          id: "link_archived",
+          evidenceId: "evidence_mixed",
+          hypothesisId: "hypothesis_archived",
+          direction: "SUPPORTS",
+          relevance: 0.8,
+          likelihoodRatio: 2,
+          confidence: 0.7,
+          rationale: "Archived link.",
+          createdAt
+        }
+      ]
+    };
+
+    const graph = createWorldModelGraph({ beliefs: [belief], observations: [observation], evidence: [evidence], updates: [] });
+    const nodeIds = graph.nodes.map((node) => node.id);
+
+    expect(nodeIds).toContain("hypothesis_visible");
+    expect(nodeIds).toContain("evidence_mixed");
+    expect(nodeIds).not.toContain("hypothesis_archived");
+    expect(graph.edges.filter((edge) => edge.relation === "INFLUENCES").map((edge) => edge.target)).toEqual(["hypothesis_visible"]);
+    expect(graph.edges.filter((edge) => edge.relation === "CANDIDATE")).toEqual([]);
+    expect(graph.edges.every((edge) => nodeIds.includes(edge.source) && nodeIds.includes(edge.target))).toBe(true);
+  });
+
+  it("excludes rejected observations and deleted evidence from the rendered graph", () => {
+    const createdAt = new Date("2026-06-11T00:00:00.000Z");
+    const belief: BeliefRecord = {
+      id: "belief_cleanup",
+      title: "Cleanup belief",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      status: "ACTIVE",
+      createdAt,
+      updatedAt: createdAt,
+      hypotheses: [
+        {
+          id: "hypothesis_cleanup",
+          beliefId: "belief_cleanup",
+          proposition: "Cleanup hypothesis",
+          notes: "",
+          stance: "SUPPORTS",
+          priorProbability: 0.4,
+          currentProbability: 0.4,
+          strength: 0.4,
+          status: "ACTIVE",
+          createdAt,
+          updatedAt: createdAt
+        }
+      ]
+    };
+    const rejectedObservation: ObservationRecord = {
+      id: "observation_rejected",
+      title: "Rejected observation",
+      content: "Rejected observation content.",
+      observedAt: new Date("2026-06-11T01:00:00.000Z"),
+      status: "REJECTED",
+      credibility: 0.7,
+      metadata: {
+        recommendedLinks: [{ hypothesisId: "hypothesis_cleanup", direction: "SUPPORTS", relevance: 0.8, likelihoodRatio: 2 }]
+      }
+    };
+    const deletedEvidence: EvidenceRecord = {
+      id: "evidence_deleted",
+      observationId: "observation_deleted",
+      title: "Deleted evidence",
+      content: "Deleted evidence content.",
+      confirmedAt: new Date("2026-06-11T02:00:00.000Z"),
+      confirmationMode: "MANUAL",
+      credibility: 0.8,
+      status: "DELETED",
+      metadata: {},
+      links: [
+        {
+          id: "link_deleted",
+          evidenceId: "evidence_deleted",
+          hypothesisId: "hypothesis_cleanup",
+          direction: "SUPPORTS",
+          relevance: 0.8,
+          likelihoodRatio: 2,
+          confidence: 0.7,
+          rationale: "Deleted evidence should not render.",
+          createdAt
+        }
+      ]
+    };
+
+    const graph = createWorldModelGraph({
+      beliefs: [belief],
+      observations: [rejectedObservation],
+      evidence: [deletedEvidence],
+      updates: []
+    });
+    const nodeIds = graph.nodes.map((node) => node.id);
+
+    expect(nodeIds).not.toContain("observation_rejected");
+    expect(nodeIds).not.toContain("evidence_deleted");
+    expect(graph.edges.every((edge) => nodeIds.includes(edge.source) && nodeIds.includes(edge.target))).toBe(true);
+  });
+
   it("includes source and confirmed observation provenance for evidence", () => {
     const createdAt = new Date("2026-06-11T00:00:00.000Z");
     const source: ObservationSourceRecord = {
