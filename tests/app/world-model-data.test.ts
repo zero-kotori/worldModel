@@ -73,28 +73,31 @@ describe("world model data loader", () => {
     }
   });
 
-  it("keeps page data available when worker restore fails", async () => {
+  it("reads worker runtime without restoring workers during page loads", async () => {
     const services = worldModelServices();
+    const runtime = [{ workerId: "default", running: true, consecutiveFailureCount: 0 }];
     const restoreEnabled = vi.fn().mockRejectedValue(new Error("timer startup failed"));
+    const listRuntime = vi.fn().mockReturnValue(runtime);
     mocks.getWorldModelServices.mockReturnValue(services);
-    mocks.getEvidenceLoopWorkerController.mockReturnValue({ restoreEnabled });
+    mocks.getEvidenceLoopWorkerController.mockReturnValue({ restoreEnabled, listRuntime });
     const { loadWorldModelData } = await import("@/app/admin/world-model/data");
 
     const data = await loadWorldModelData();
 
     expect(data.beliefs).toHaveLength(1);
     expect(data.beliefs[0].title).toBe("Automation resilience");
-    expect(data.workerRuntime).toEqual([]);
-    expect(data.error).toBe("自动化守护进程恢复失败：timer startup failed");
-    expect(restoreEnabled).toHaveBeenCalledWith(services);
+    expect(data.workerRuntime).toEqual(runtime);
+    expect(data.error).toBeNull();
+    expect(listRuntime).toHaveBeenCalledWith();
+    expect(restoreEnabled).not.toHaveBeenCalled();
   });
 
   it("keeps page data available when LLM evaluation loading fails", async () => {
     const services = worldModelServices();
-    const restoreEnabled = vi.fn().mockResolvedValue([]);
+    const listRuntime = vi.fn().mockReturnValue([]);
     mocks.loadLlmEvaluationArtifact.mockRejectedValue(new Error("artifact read failed"));
     mocks.getWorldModelServices.mockReturnValue(services);
-    mocks.getEvidenceLoopWorkerController.mockReturnValue({ restoreEnabled });
+    mocks.getEvidenceLoopWorkerController.mockReturnValue({ listRuntime });
     const { loadWorldModelData } = await import("@/app/admin/world-model/data");
 
     const data = await loadWorldModelData();
@@ -103,6 +106,6 @@ describe("world model data loader", () => {
     expect(data.beliefs[0].title).toBe("Automation resilience");
     expect(data.llmEvaluation).toBeNull();
     expect(data.error).toBe("LLM 评估加载失败：artifact read failed");
-    expect(restoreEnabled).toHaveBeenCalledWith(services);
+    expect(listRuntime).toHaveBeenCalledWith();
   });
 });

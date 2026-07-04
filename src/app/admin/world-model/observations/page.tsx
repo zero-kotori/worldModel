@@ -62,6 +62,7 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
   const lowImpactObservations = groupedObservations.unknown.filter(
     (observation) => observation.metadata.ignoredReason === "LOW_IMPACT"
   );
+  const showObservationPool = firstParam(params.view) === "pool";
   function renderRecommendedLinks(links: ReturnType<typeof getObservationRecommendedLinks>) {
     if (links.length === 0) return null;
     return (
@@ -264,7 +265,7 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
                   const code = readableCode(observationCodes, observation.id, "O");
                   const queryContext = observationQueryContextSummary(observation);
                   return (
-                    <tr key={observation.id} className="border-t border-line">
+                    <tr key={observation.id} id={code} className="border-t border-line">
                       <td className="px-3 py-2 font-mono text-xs">{code}</td>
                       <td className="px-3 py-2">
                         <div>{observation.title}</div>
@@ -466,14 +467,23 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
         )}
       </PageSection>
       </div>
-      <details id="observation-pool" className="border-t border-line py-5">
-        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
-          <span className="text-sm font-semibold uppercase tracking-wide text-ink/65">观察池</span>
-          <span className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink hover:border-moss hover:text-moss">
-            展开观察池
-          </span>
-        </summary>
-        <div className="mt-3">
+      <div id="observation-pool">
+      <PageSection title="观察池">
+        {!showObservationPool ? (
+          <Link
+            href="/admin/world-model/observations?view=pool#observation-pool"
+            className="inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"
+          >
+            打开观察池
+          </Link>
+        ) : (
+          <div className="grid gap-3">
+            <Link
+              href="/admin/world-model/observations#observation-pool"
+              className="inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"
+            >
+              收起观察池
+            </Link>
         {data.observations.length === 0 ? (
           <EmptyState label="暂无观察" />
         ) : (
@@ -503,7 +513,7 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
                     <td className="px-3 py-2 font-mono text-xs">{code}</td>
                     <td className="min-w-[320px] px-3 py-2">
                       <form action={updateGraphObservationAction} className="grid gap-2">
-                        <input type="hidden" name="returnPath" value="/admin/world-model/observations#observation-pool" />
+                        <input type="hidden" name="returnPath" value="/admin/world-model/observations?view=pool#observation-pool" />
                         <input type="hidden" name="observationId" value={observation.id} />
                         <Field label="标题" name="title" defaultValue={observation.title} required />
                         <Field label="链接" name="url" type="url" defaultValue={observation.url ?? ""} />
@@ -530,8 +540,10 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
             </table>
           </div>
         )}
-        </div>
-      </details>
+          </div>
+        )}
+      </PageSection>
+      </div>
     </main>
   );
 }

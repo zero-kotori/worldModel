@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Check, Maximize2, Play, RotateCcw, Save, Trash2, Zap } from "lucide-react";
+import { Check, Maximize2, RotateCcw, Save, Trash2, Zap } from "lucide-react";
 import {
   applyEvidenceUpdateAction,
   confirmEvidenceAction,
@@ -28,6 +28,7 @@ import { evidenceDirectionLabels, hypothesisStanceLabels } from "@/lib/world-mod
 import { createRollbackOptions, summarizeUpdateDelta, summarizeUpdateExplanation } from "@/lib/world-model-updates-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
+import { PendingSubmitButton } from "@/components/world-model/PendingSubmitButton";
 import type { BeliefRecord, EvidenceRecord, HypothesisRecord } from "@/server/services/types";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,34 @@ function formatPointDelta(value: number) {
   const points = value * 100;
   const sign = points > 0 ? "+" : "";
   return `${sign}${points.toFixed(1)}pp`;
+}
+
+function MultiCheckboxField({
+  label,
+  name,
+  options
+}: {
+  label: string;
+  name: string;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <fieldset className="grid gap-1 text-xs font-medium text-ink/65 lg:col-span-2">
+      <legend>{label}</legend>
+      <div className="grid max-h-40 min-h-24 gap-1 overflow-y-auto rounded-md border border-line bg-white p-2 text-sm text-ink">
+        {options.length === 0 ? (
+          <div className="px-2 py-1 text-ink/45">暂无可选项</div>
+        ) : (
+          options.map((option) => (
+            <label key={option.value} className="flex min-w-0 items-center gap-2 rounded px-2 py-1 hover:bg-moss/5">
+              <input name={name} value={option.value} type="checkbox" />
+              <span className="min-w-0 truncate">{option.label}</span>
+            </label>
+          ))
+        )}
+      </div>
+    </fieldset>
+  );
 }
 
 const hypothesisLinkRowClass = "grid gap-2 border-t border-line py-3 lg:grid-cols-[minmax(18rem,2fr)_repeat(4,minmax(8rem,1fr))]";
@@ -282,42 +311,16 @@ export default async function EvidencePage({ searchParams }: PageProps) {
             <input type="hidden" name="maxSources" value="3" />
             <input type="hidden" name="maxObservations" value="20" />
             <input type="hidden" name="bootstrapDefaultSources" value="true" />
-            <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-moss px-3 text-sm font-semibold text-moss">
-              <Play size={16} /> 预检闭环
-            </button>
+            <PendingSubmitButton
+              idleLabel="预检闭环"
+              pendingLabel="预检中"
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-moss px-3 text-sm font-semibold text-moss"
+            />
           </form>
           <form action={runEvidenceLoopAction} className="grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-5">
             <input type="hidden" name="returnPath" value={evidenceLoopReturnPath} />
-            <label className="grid gap-1 text-xs font-medium text-ink/65 lg:col-span-2">
-              <span>限定信念</span>
-              <select
-                name="beliefIds"
-                multiple
-                size={Math.min(Math.max(beliefOptions.length, 2), 5)}
-                className="min-h-24 rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-moss"
-              >
-                {beliefOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-xs font-medium text-ink/65 lg:col-span-2">
-              <span>限定来源</span>
-              <select
-                name="sourceIds"
-                multiple
-                size={Math.min(Math.max(sourceOptions.length, 2), 5)}
-                className="min-h-24 rounded-md border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-moss"
-              >
-                {sourceOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <MultiCheckboxField label="限定信念" name="beliefIds" options={beliefOptions} />
+            <MultiCheckboxField label="限定来源" name="sourceIds" options={sourceOptions} />
             <Field label="最大查询" name="maxQueries" type="number" min="1" defaultValue="3" />
             <Field label="最大来源" name="maxSources" type="number" min="1" defaultValue="3" />
             <Field label="最大观察" name="maxObservations" type="number" min="1" defaultValue="20" />
@@ -333,9 +336,11 @@ export default async function EvidencePage({ searchParams }: PageProps) {
               <input name="forceAutoApply" type="checkbox" /> 本次自动应用
             </label>
             {canRunEvidenceLoop ? (
-              <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white">
-                <Play size={16} /> 运行闭环
-              </button>
+              <PendingSubmitButton
+                idleLabel="运行闭环"
+                pendingLabel="运行中"
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white"
+              />
             ) : null}
           </form>
         </PageSection>

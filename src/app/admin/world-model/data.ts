@@ -12,11 +12,6 @@ function formatDataError(error: unknown) {
   return "数据加载失败，请检查 worldModel 服务日志。";
 }
 
-function formatWorkerRestoreError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return `自动化守护进程恢复失败：${message}`;
-}
-
 function formatLlmEvaluationError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return `LLM 评估加载失败：${message}`;
@@ -63,13 +58,7 @@ export async function loadWorldModelData() {
 
   try {
     const services = getWorldModelServices();
-    let workerRuntime: Awaited<ReturnType<ReturnType<typeof getEvidenceLoopWorkerController>["restoreEnabled"]>> = [];
-    let workerRestoreError: string | null = null;
-    try {
-      workerRuntime = await getEvidenceLoopWorkerController().restoreEnabled(services);
-    } catch (error) {
-      workerRestoreError = formatWorkerRestoreError(error);
-    }
+    const workerRuntime = getEvidenceLoopWorkerController().listRuntime();
     const [beliefs, observations, evidence, sources, runs, heartbeats, workerConfigs, models, updates, likelihoodRuns] = await Promise.all([
       services.beliefs.listBeliefs(),
       services.observations.listObservations(),
@@ -95,7 +84,7 @@ export async function loadWorldModelData() {
       updates,
       likelihoodRuns,
       llmEvaluation,
-      error: joinDataErrors(llmEvaluationError, workerRestoreError)
+      error: joinDataErrors(llmEvaluationError)
     };
   } catch (error) {
     return {

@@ -521,7 +521,7 @@ describe("world model observations page", () => {
     expect(duplicateSection).not.toContain('name="observationIds" value="observation_original"');
   });
 
-  it("lets operators edit observations directly from the observation pool", async () => {
+  it("keeps the observation pool behind an explicit view link by default", async () => {
     loadWorldModelData.mockResolvedValue({
       error: undefined,
       beliefs: [],
@@ -543,11 +543,39 @@ describe("world model observations page", () => {
 
     const html = renderToStaticMarkup(await ObservationsPage({ searchParams: Promise.resolve({}) }));
 
-    expect(html).toContain('<details id="observation-pool"');
-    expect(html).not.toContain('<details id="observation-pool" open=""');
-    expect(html).toContain("展开观察池");
+    expect(html).toContain('id="observation-pool"');
+    expect(html).toContain('href="/admin/world-model/observations?view=pool#observation-pool"');
+    expect(html).toContain("打开观察池");
+    expect(html).not.toContain("保存观察");
+    expect(html).not.toContain('name="returnPath" value="/admin/world-model/observations?view=pool#observation-pool"');
+  });
+
+  it("lets operators edit observations from the explicit observation pool view", async () => {
+    loadWorldModelData.mockResolvedValue({
+      error: undefined,
+      beliefs: [],
+      observations: [
+        observation({
+          id: "observation_editable",
+          title: "Editable observation",
+          content: "Original observation content.",
+          status: "PENDING",
+          url: "https://example.com/original",
+          author: "Original source",
+          metadata: {}
+        })
+      ],
+      evidence: [],
+      updates: []
+    });
+    const { default: ObservationsPage } = await import("@/app/admin/world-model/observations/page");
+
+    const html = renderToStaticMarkup(await ObservationsPage({ searchParams: Promise.resolve({ view: "pool" }) }));
+
+    expect(html).toContain('id="observation-pool"');
+    expect(html).toContain("收起观察池");
     expect(html).toContain("保存观察");
-    expect(html).toContain('name="returnPath" value="/admin/world-model/observations#observation-pool"');
+    expect(html).toContain('name="returnPath" value="/admin/world-model/observations?view=pool#observation-pool"');
     expect(html).toContain('name="observationId" value="observation_editable"');
     expect(html).toMatch(/<input[^>]*name="title"[^>]*value="Editable observation"/);
     expect(html).toMatch(/<input[^>]*name="url"[^>]*value="https:\/\/example\.com\/original"/);

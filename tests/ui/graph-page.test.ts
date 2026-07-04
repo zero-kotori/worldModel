@@ -531,5 +531,8 @@ describe("world model graph page", () => {
 
     expect(html).toContain("图谱连接已保存并重新应用");
     expect(html).toContain("请选择一条观察，并至少勾选一个关联假设。");
+    expect(html).toContain("操作结果");
+    expect(html).toContain("操作失败");
+    expect(html).toContain('role="status"');
   });
 });

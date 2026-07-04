@@ -169,11 +169,15 @@ describe("world model evidence page", () => {
     expect(html).toContain('name="beliefIds"');
     expect(html).toContain("B-001 · AI agents");
     expect(html).toContain('name="sourceIds"');
+    expect(html).toContain('type="checkbox"');
     expect(html).toContain("S-001 · Search source");
+    expect(html).not.toContain('<select name="sourceIds" multiple=""');
     expect(html).toContain('name="candidateThreshold"');
     expect(html).toContain('name="autoConfirmThreshold"');
     expect(html).toContain('name="reviewOnly"');
     expect(html).toContain('name="forceAutoApply"');
+    expect(html).toContain('data-pending-label="预检中"');
+    expect(html).toContain('data-pending-label="运行中"');
     expect(html).toContain("运行闭环");
   });
 

@@ -22,7 +22,13 @@ export function StatusNotice({ message, tone = "success" }: { message?: string; 
   if (!message) return null;
   const classes =
     tone === "error"
-      ? "border-berry/30 bg-berry/10 text-berry"
-      : "border-moss/30 bg-moss/10 text-moss";
-  return <div className={`mb-4 rounded-md border px-4 py-3 text-sm ${classes}`}>{message}</div>;
+      ? "border-berry/40 bg-berry/10 text-berry"
+      : "border-moss/40 bg-moss/10 text-moss";
+  const title = tone === "error" ? "操作失败" : "操作结果";
+  return (
+    <div className={`mb-5 rounded-md border px-4 py-3 shadow-sm ${classes}`} role="status" aria-live="polite">
+      <div className="text-xs font-semibold uppercase tracking-wide">{title}</div>
+      <div className="mt-1 whitespace-pre-wrap break-words text-base font-semibold leading-7">{message}</div>
+    </div>
+  );
 }
