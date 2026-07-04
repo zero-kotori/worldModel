@@ -469,6 +469,8 @@ describe("world model graph view", () => {
     expect(html).toContain("拒绝观察");
     expect(html).toContain('name="observationId" value="observation_signal"');
     expect(html).toContain('name="returnPath" value="/admin/world-model/graph?source=S-001"');
+    expect(html).not.toContain("作者/来源");
+    expect(html).not.toContain('name="author"');
   });
 
   it("does not render graph observation rejection for confirmed observations", async () => {

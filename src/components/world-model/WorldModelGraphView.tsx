@@ -373,10 +373,10 @@ function Field({
   required?: boolean;
 }) {
   return (
-    <label className="grid gap-1 text-xs text-ink/60">
+    <label className="grid min-w-0 gap-1 text-xs text-ink/60">
       <span>{label}</span>
       <input
-        className="min-h-9 rounded-md border border-line bg-white px-2 text-sm text-ink"
+        className="min-h-9 w-full min-w-0 rounded-md border border-line bg-white px-2 text-sm text-ink"
         name={name}
         type={type}
         step={step}
@@ -401,9 +401,9 @@ function Select({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="grid gap-1 text-xs text-ink/60">
+    <label className="grid min-w-0 gap-1 text-xs text-ink/60">
       <span>{label}</span>
-      <select className="min-h-9 rounded-md border border-line bg-white px-2 text-sm text-ink" name={name} defaultValue={defaultValue}>
+      <select className="min-h-9 w-full min-w-0 rounded-md border border-line bg-white px-2 text-sm text-ink" name={name} defaultValue={defaultValue}>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -416,10 +416,10 @@ function Select({
 
 function TextArea({ label, name, defaultValue, required }: { label: string; name: string; defaultValue?: string; required?: boolean }) {
   return (
-    <label className="grid gap-1 text-xs text-ink/60">
+    <label className="grid min-w-0 gap-1 text-xs text-ink/60">
       <span>{label}</span>
       <textarea
-        className="min-h-20 rounded-md border border-line bg-white px-2 py-2 text-sm text-ink"
+        className="min-h-20 w-full min-w-0 rounded-md border border-line bg-white px-2 py-2 text-sm text-ink"
         name={name}
         defaultValue={defaultValue}
         required={required}
@@ -727,7 +727,6 @@ export function ObservationEditor({ editor, observationId, returnPath }: { edito
         <Select label="来源" name="sourceId" defaultValue={observation.sourceId ?? ""} options={sourceOptions} />
         <Field label="观察" name="title" defaultValue={observation.title} required />
         <Field label="链接" name="url" type="url" defaultValue={observation.url ?? ""} />
-        <Field label="作者/来源" name="author" defaultValue={observation.author ?? ""} />
         <Field label="可信度" name="credibility" type="number" step="0.01" min="0" max="1" defaultValue={observation.credibility} />
         <TextArea label="正文" name="content" defaultValue={observation.content} required />
         <button className="min-h-9 rounded-md border border-line px-3 text-sm font-semibold text-ink">保存观察</button>

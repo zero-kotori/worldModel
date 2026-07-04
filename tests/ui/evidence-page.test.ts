@@ -440,7 +440,7 @@ describe("world model evidence page", () => {
     expect(html).toContain("搜证目标 H-001 · B-001；优先级 0.74；high uncertainty; no active evidence；查询：AI agents engineering teams adoption");
   });
 
-  it("embeds an editable evidence impact graph on the evidence page", async () => {
+  it("links to the graph workspace without embedding the evidence graph", async () => {
     loadWorldModelData.mockResolvedValue({
       error: undefined,
       beliefs: [belief()],
@@ -471,10 +471,8 @@ describe("world model evidence page", () => {
 
     const html = renderToStaticMarkup(await EvidencePage({ searchParams: Promise.resolve({}) }));
 
-    expect(html).toContain('data-testid="world-model-graph"');
-    expect(html).toContain('data-return-path="/admin/world-model/evidence"');
-    expect(html).toContain("Active evidence graph node");
-    expect(html).toContain("editable:1");
+    expect(html).not.toContain('data-testid="world-model-graph"');
+    expect(html).not.toContain("editable:1");
     expect(html).toContain('href="/admin/world-model/graph"');
   });
 
@@ -519,7 +517,7 @@ describe("world model evidence page", () => {
     const otherStart = html.indexOf('id="E-002"');
     const focusedHtml = html.slice(focusedStart, otherStart > focusedStart ? otherStart : undefined);
 
-    expect(html).toContain('data-return-path="/admin/world-model/evidence?evidence=E-001#E-001"');
+    expect(html).toContain('href="/admin/world-model/graph?evidence=E-001"');
     expect(focusedStart).toBeGreaterThan(-1);
     expect(focusedHtml).toContain('data-focused-evidence="true"');
     expect(focusedHtml).toContain("Focused evidence");

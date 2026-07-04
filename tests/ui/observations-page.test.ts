@@ -543,6 +543,9 @@ describe("world model observations page", () => {
 
     const html = renderToStaticMarkup(await ObservationsPage({ searchParams: Promise.resolve({}) }));
 
+    expect(html).toContain('<details id="observation-pool"');
+    expect(html).not.toContain('<details id="observation-pool" open=""');
+    expect(html).toContain("展开观察池");
     expect(html).toContain("保存观察");
     expect(html).toContain('name="returnPath" value="/admin/world-model/observations#observation-pool"');
     expect(html).toContain('name="observationId" value="observation_editable"');

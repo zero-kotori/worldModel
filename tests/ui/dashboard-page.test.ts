@@ -418,4 +418,16 @@ describe("world model dashboard page", () => {
     expect(html).toContain('name="bootstrapDefaultSources" value="true"');
     expect(html).toContain('name="forceAutoApply" value="true"');
   });
+
+  it("keeps the overview free of embedded graph duplicates", async () => {
+    loadWorldModelData.mockResolvedValue({
+      ...emptyWorldModelData(),
+      beliefs: [belief()]
+    });
+    const { default: DashboardPage } = await import("@/app/admin/world-model/page");
+
+    const html = renderToStaticMarkup(await DashboardPage());
+
+    expect(html).not.toContain('data-testid="world-model-graph"');
+  });
 });

@@ -424,10 +424,10 @@ export async function updateGraphObservationAction(formData: FormData) {
     const services = getWorldModelServices();
     await services.observations.updateObservation(text(formData, "observationId"), {
       ...(formData.has("sourceId") ? { sourceId: text(formData, "sourceId") || null } : {}),
+      ...(formData.has("author") ? { author: text(formData, "author") || undefined } : {}),
       title: text(formData, "title"),
       content: text(formData, "content"),
       url: text(formData, "url") || undefined,
-      author: text(formData, "author") || undefined,
       credibility: number(formData, "credibility", 0.5)
     });
   });

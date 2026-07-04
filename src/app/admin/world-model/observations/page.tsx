@@ -466,8 +466,14 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
         )}
       </PageSection>
       </div>
-      <div id="observation-pool">
-      <PageSection title="观察池">
+      <details id="observation-pool" className="border-t border-line py-5">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3">
+          <span className="text-sm font-semibold uppercase tracking-wide text-ink/65">观察池</span>
+          <span className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink hover:border-moss hover:text-moss">
+            展开观察池
+          </span>
+        </summary>
+        <div className="mt-3">
         {data.observations.length === 0 ? (
           <EmptyState label="暂无观察" />
         ) : (
@@ -524,8 +530,8 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
             </table>
           </div>
         )}
-      </PageSection>
-      </div>
+        </div>
+      </details>
     </main>
   );
 }

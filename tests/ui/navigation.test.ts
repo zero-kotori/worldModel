@@ -1,5 +1,13 @@
 import React, { isValidElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { vi } from "vitest";
 import { worldModelSections } from "@/lib/world-model-navigation";
+
+const usePathname = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  usePathname
+}));
 
 function collectWorldModelLinks(node: ReactNode): Array<{ href?: unknown; prefetch?: unknown; children?: ReactNode }> {
   if (Array.isArray(node)) return node.flatMap(collectWorldModelLinks);
@@ -25,10 +33,21 @@ describe("world model admin navigation", () => {
 
   it("does not prefetch protected workspace routes in proxy mode", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
-    const { default: WorldModelLayout } = await import("@/app/admin/world-model/layout");
-    const links = collectWorldModelLinks(WorldModelLayout({ children: null }));
+    usePathname.mockReturnValue("/admin/world-model");
+    const { WorldModelNav } = await import("@/components/world-model/WorldModelNav");
+    const links = collectWorldModelLinks(WorldModelNav());
 
     expect(links.map((link) => link.href)).toEqual(worldModelSections.map((section) => section.href));
     expect(links.every((link) => link.prefetch === false)).toBe(true);
+  });
+
+  it("marks the current workspace tab with a visible active state", async () => {
+    usePathname.mockReturnValue("/admin/world-model/evidence");
+    const { WorldModelNav } = await import("@/components/world-model/WorldModelNav");
+
+    const html = renderToStaticMarkup(React.createElement(WorldModelNav));
+
+    expect(html).toContain('aria-current="page"');
+    expect(html).toMatch(/class="[^"]*bg-moss[^"]*text-white[^"]*" href="\/admin\/world-model\/evidence"/);
   });
 });

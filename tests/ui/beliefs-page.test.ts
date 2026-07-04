@@ -282,4 +282,21 @@ describe("world model beliefs page", () => {
     expect(html).toContain("缺少反证假设");
     expect(html).toContain("当前有效假设只有支持方向");
   });
+
+  it("keeps belief management focused on tables instead of embedding the graph", async () => {
+    loadWorldModelData.mockResolvedValue({
+      error: undefined,
+      beliefs: [belief()],
+      observations: [],
+      evidence: [],
+      updates: []
+    });
+    recommendHypotheses.mockResolvedValue([]);
+    const { default: BeliefsPage } = await import("@/app/admin/world-model/beliefs/page");
+
+    const html = renderToStaticMarkup(await BeliefsPage({ searchParams: Promise.resolve({}) }));
+
+    expect(html).toContain("信念表");
+    expect(html).not.toContain('data-testid="world-model-graph"');
+  });
 });

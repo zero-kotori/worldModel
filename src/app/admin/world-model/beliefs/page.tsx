@@ -10,13 +10,9 @@ import {
   summarizeHypothesisEvidenceImpact,
   summarizeHypothesisStanceCoverage
 } from "@/lib/world-model-beliefs-ui";
-import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
-import { createWorldModelGraph } from "@/lib/world-model-graph";
-import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
-import { WorldModelGraphView } from "@/components/world-model/WorldModelGraphView";
 
 export const dynamic = "force-dynamic";
 
@@ -95,11 +91,6 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
   const sourceRecommendationBeliefIds = new Set(
     sourceObservationId ? data.beliefs.filter((belief) => recommendationsForBelief(belief.id).length > 0).map((belief) => belief.id) : []
   );
-  const beliefsReturnParams = new URLSearchParams();
-  if (selectedBeliefCode) beliefsReturnParams.set("belief", selectedBeliefCode);
-  if (sourceObservationCode) beliefsReturnParams.set("sourceObservation", sourceObservationCode);
-  if (reviewDueOnly) beliefsReturnParams.set("view", "review-due");
-  const beliefsReturnPath = `/admin/world-model/beliefs${beliefsReturnParams.size > 0 ? `?${beliefsReturnParams.toString()}` : ""}`;
   const selectedBelief = data.beliefs.find((belief) => readableCode(beliefCodes, belief.id, "B") === selectedBeliefCode);
   const reviewDueBeliefs = data.beliefs
     .map((belief) => ({
@@ -113,35 +104,6 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
       : reviewDueOnly && !selectedBelief
         ? reviewDueBeliefs
         : data.beliefs;
-  const graphBeliefs = selectedBelief ? [selectedBelief] : visibleBeliefs;
-  const graphBeliefIds = new Set(graphBeliefs.map((belief) => belief.id));
-  const graphHypothesisIds = new Set(graphBeliefs.flatMap((belief) => belief.hypotheses.map((hypothesis) => hypothesis.id)));
-  const graphEvidence = data.evidence
-    .map((evidence) => ({ ...evidence, links: evidence.links.filter((link) => graphHypothesisIds.has(link.hypothesisId)) }))
-    .filter((evidence) => evidence.links.length > 0);
-  const graphObservations =
-    selectedBelief || reviewDueOnly
-      ? data.observations.filter((observation) =>
-          getObservationRecommendedLinks(observation).some((link) => graphHypothesisIds.has(link.hypothesisId))
-        )
-      : data.observations;
-  const graphEvidenceIds = new Set(graphEvidence.map((evidence) => evidence.id));
-  const graphUpdates = data.updates.filter((event) => graphBeliefIds.has(event.beliefId) && graphEvidenceIds.has(event.evidenceId));
-  const graph = createWorldModelGraph({
-    sources: data.sources,
-    beliefs: graphBeliefs,
-    observations: graphObservations,
-    evidence: graphEvidence,
-    updates: graphUpdates
-  });
-  const graphEditor = createWorldModelGraphEditorData({
-    sources: data.sources,
-    beliefs: data.beliefs,
-    observations: data.observations,
-    evidence: data.evidence,
-    updates: data.updates,
-    likelihoodRuns: data.likelihoodRuns
-  });
   const beliefSectionTitle = sourceObservationId ? "来源观察推荐" : reviewDueOnly ? "待复核假设" : "信念表";
   const sourceObservationSeed = sourceObservation
     ? {
@@ -157,9 +119,6 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
       <DataWarning message={data.error} />
       <StatusNotice message={firstParam(params.message)} />
       <StatusNotice message={firstParam(params.error)} tone="error" />
-      <PageSection title={selectedBelief ? "信念关系图谱" : "信念全局图谱"}>
-        <WorldModelGraphView graph={graph} editor={graphEditor} returnPath={beliefsReturnPath} />
-      </PageSection>
       <div id="recommendations">
       <PageSection title={beliefSectionTitle}>
         {visibleBeliefs.length === 0 ? (

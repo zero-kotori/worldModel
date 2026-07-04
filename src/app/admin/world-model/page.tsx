@@ -3,12 +3,9 @@ import { Play } from "lucide-react";
 import { startEvidenceLoopWorkerAction } from "@/app/admin/world-model/actions";
 import { loadWorldModelData } from "@/app/admin/world-model/data";
 import { DataWarning, PageSection } from "@/components/world-model/PageSection";
-import { WorldModelGraphView } from "@/components/world-model/WorldModelGraphView";
 import { isHypothesisCurrentlyEffective, summarizeHypothesisTimeCoverage } from "@/lib/world-model-beliefs-ui";
 import { summarizeDashboardActions, summarizeResolvedHypothesisCalibration } from "@/lib/world-model-dashboard-ui";
 import { createReadableCodes, readableCode } from "@/lib/world-model-display";
-import { createWorldModelGraph } from "@/lib/world-model-graph";
-import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
 import { summarizeLlmScorerConfig } from "@/lib/world-model-models-ui";
 import { categoryLabels } from "@/lib/world-model-navigation";
 import { summarizeAutomationHealth } from "@/lib/world-model-sources-ui";
@@ -49,21 +46,6 @@ export default async function WorldModelDashboardPage() {
   const hypothesisById = new Map(data.beliefs.flatMap((belief) => belief.hypotheses).map((hypothesis) => [hypothesis.id, hypothesis]));
   const evidenceById = new Map(data.evidence.map((evidence) => [evidence.id, evidence]));
   const sourceById = new Map(data.sources.map((source) => [source.id, source]));
-  const graph = createWorldModelGraph({
-    sources: data.sources,
-    beliefs: data.beliefs,
-    observations: data.observations,
-    evidence: data.evidence,
-    updates: data.updates
-  });
-  const graphEditor = createWorldModelGraphEditorData({
-    sources: data.sources,
-    beliefs: data.beliefs,
-    observations: data.observations,
-    evidence: data.evidence,
-    updates: data.updates,
-    likelihoodRuns: data.likelihoodRuns
-  });
   const referenceTime = new Date();
   const hypothesisCoverage = summarizeHypothesisTimeCoverage(
     data.beliefs.flatMap((belief) => belief.hypotheses),
@@ -242,9 +224,6 @@ export default async function WorldModelDashboardPage() {
             </div>
           </div>
         )}
-      </PageSection>
-      <PageSection title="关系图谱">
-        <WorldModelGraphView graph={graph} editor={graphEditor} returnPath="/admin/world-model" />
       </PageSection>
       <PageSection title="信念表">
         {data.beliefs.length === 0 ? (

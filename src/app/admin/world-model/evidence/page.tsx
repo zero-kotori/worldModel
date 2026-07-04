@@ -23,14 +23,11 @@ import {
   evidenceCandidateEvaluationSummary,
   evidenceQueryContextSummary
 } from "@/lib/world-model-evidence-ui";
-import { createWorldModelGraph } from "@/lib/world-model-graph";
-import { createWorldModelGraphEditorData } from "@/lib/world-model-graph-editor";
 import { getObservationRecommendedLinks } from "@/lib/world-model-observations-ui";
 import { evidenceDirectionLabels, hypothesisStanceLabels } from "@/lib/world-model-navigation";
 import { createRollbackOptions, summarizeUpdateDelta, summarizeUpdateExplanation } from "@/lib/world-model-updates-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
-import { WorldModelGraphView } from "@/components/world-model/WorldModelGraphView";
 import type { BeliefRecord, EvidenceRecord, HypothesisRecord } from "@/server/services/types";
 
 export const dynamic = "force-dynamic";
@@ -222,9 +219,9 @@ export default async function EvidencePage({ searchParams }: PageProps) {
     (evidence) => evidence.id === selectedEvidenceParam || readableCode(evidenceCodes, evidence.id, "E") === selectedEvidenceParam
   );
   const selectedEvidenceCode = selectedEvidence ? readableCode(evidenceCodes, selectedEvidence.id, "E") : undefined;
-  const evidenceReturnPath = selectedEvidenceCode
-    ? `/admin/world-model/evidence?evidence=${encodeURIComponent(selectedEvidenceCode)}#${encodeURIComponent(selectedEvidenceCode)}`
-    : "/admin/world-model/evidence";
+  const evidenceGraphHref = selectedEvidenceCode
+    ? `/admin/world-model/graph?evidence=${encodeURIComponent(selectedEvidenceCode)}`
+    : "/admin/world-model/graph";
   const updateCodes = createReadableCodes(data.updates, "U", (event) => event.createdAt);
   const selectedUpdateParam = firstParam(params.update);
   const selectedUpdate = data.updates.find(
@@ -272,22 +269,6 @@ export default async function EvidencePage({ searchParams }: PageProps) {
     }
   );
   const selectedRollbackEventId = rollbackOptions.some((option) => option.value === selectedUpdate?.id) ? selectedUpdate?.id : undefined;
-  const evidenceGraph = createWorldModelGraph({
-    sources,
-    beliefs: data.beliefs,
-    observations: data.observations,
-    evidence: data.evidence,
-    updates: data.updates
-  });
-  const evidenceGraphEditor = createWorldModelGraphEditorData({
-    sources,
-    beliefs: data.beliefs,
-    observations: data.observations,
-    evidence: data.evidence,
-    updates: data.updates,
-    likelihoodRuns: data.likelihoodRuns
-  });
-
   return (
     <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
       <DataWarning message={data.error} />
@@ -464,16 +445,13 @@ export default async function EvidencePage({ searchParams }: PageProps) {
           ) : null}
         </form>
       </PageSection>
-      <PageSection title="证据影响图谱">
-        <div className="grid gap-3">
-          <Link
-            href="/admin/world-model/graph"
-            className="inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"
-          >
-            <Maximize2 size={16} /> 打开图谱工作区
-          </Link>
-          <WorldModelGraphView graph={evidenceGraph} editor={evidenceGraphEditor} returnPath={evidenceReturnPath} />
-        </div>
+      <PageSection title="图谱入口">
+        <Link
+          href={evidenceGraphHref}
+          className="inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"
+        >
+          <Maximize2 size={16} /> 打开图谱工作区
+        </Link>
       </PageSection>
       <PageSection title="证据库">
         {data.evidence.length === 0 ? (
