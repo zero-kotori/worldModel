@@ -21,6 +21,7 @@ import {
   deleteEvidenceAction,
   disconnectEvidenceHypothesisAction,
   rejectEvidenceAction,
+  rejectObservationAction,
   rollbackUpdateAction,
   updateBeliefAction,
   updateEvidenceAction,
@@ -731,6 +732,13 @@ export function ObservationEditor({ editor, observationId, returnPath }: { edito
         <TextArea label="正文" name="content" defaultValue={observation.content} required />
         <button className="min-h-9 rounded-md border border-line px-3 text-sm font-semibold text-ink">保存观察</button>
       </form>
+      {canConfirm ? (
+        <form action={rejectObservationAction} className="grid gap-3 border-t border-line pt-4">
+          <ReturnPathField returnPath={returnPath} />
+          <input type="hidden" name="observationId" value={observation.id} />
+          <button className="min-h-9 rounded-md border border-berry px-3 text-sm font-semibold text-berry">拒绝观察</button>
+        </form>
+      ) : null}
       <form action={confirmGraphObservationAction} className="grid gap-3 border-t border-line pt-4">
         <ReturnPathField returnPath={returnPath} />
         <input type="hidden" name="observationId" value={observation.id} />

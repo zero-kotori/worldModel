@@ -29,6 +29,7 @@ vi.mock("@/app/admin/world-model/actions", () => ({
   connectObservationHypothesisAction: vi.fn(),
   connectSourceObservationAction: vi.fn(),
   disconnectEvidenceHypothesisAction: vi.fn(),
+  rejectObservationAction: vi.fn(),
   updateBeliefAction: vi.fn(),
   rollbackUpdateAction: vi.fn(),
   updateEvidenceAction: vi.fn(),
@@ -465,6 +466,30 @@ describe("world model graph view", () => {
     expect(html).toContain('<option value="source_news" selected="">S-001 · News source</option>');
     expect(html).toContain('<option value="source_other">S-002 · Other source</option>');
     expect(html).toContain("保存观察");
+    expect(html).toContain("拒绝观察");
+    expect(html).toContain('name="observationId" value="observation_signal"');
+    expect(html).toContain('name="returnPath" value="/admin/world-model/graph?source=S-001"');
+  });
+
+  it("does not render graph observation rejection for confirmed observations", async () => {
+    const { ObservationEditor } = await import("@/components/world-model/WorldModelGraphView");
+    const editor = createWorldModelGraphEditorData({
+      sources: [source()],
+      beliefs: [belief()],
+      observations: [observation({ status: "CONFIRMED" })],
+      evidence: [],
+      updates: []
+    });
+
+    const html = renderToStaticMarkup(
+      React.createElement(ObservationEditor, {
+        editor,
+        observationId: "observation_signal",
+        returnPath: "/admin/world-model/graph?source=S-001"
+      })
+    );
+
+    expect(html).not.toContain("拒绝观察");
   });
 
   it("renders a source-observation graph connection as source assignment", async () => {
