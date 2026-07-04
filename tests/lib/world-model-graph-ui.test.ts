@@ -8,11 +8,12 @@ import {
 } from "@/lib/world-model-graph-ui";
 
 describe("world model graph interaction", () => {
-  it("uses wheel input for vertical movement and keeps zoom on explicit controls", () => {
+  it("uses wheel input for vertical movement and ctrl-wheel for zooming the graph", () => {
     expect(graphInteractionOptions).toMatchObject({
       zoomOnScroll: false,
+      zoomActivationKeyCode: "Control",
       zoomOnDoubleClick: false,
-      zoomOnPinch: false,
+      zoomOnPinch: true,
       panOnScroll: true,
       panOnScrollMode: "vertical"
     });
@@ -21,12 +22,16 @@ describe("world model graph interaction", () => {
   it("does not capture wheel input in embedded graphs until the canvas is activated", () => {
     expect(createGraphInteractionOptions({ mode: "embedded", panActivated: false })).toMatchObject({
       zoomOnScroll: false,
+      zoomActivationKeyCode: "Control",
+      zoomOnPinch: true,
       preventScrolling: false,
       panOnScroll: false,
       panOnScrollMode: "vertical"
     });
     expect(createGraphInteractionOptions({ mode: "embedded", panActivated: true })).toMatchObject({
       zoomOnScroll: false,
+      zoomActivationKeyCode: "Control",
+      zoomOnPinch: true,
       preventScrolling: true,
       panOnScroll: true,
       panOnScrollMode: "vertical"
@@ -36,6 +41,8 @@ describe("world model graph interaction", () => {
   it("keeps workspace graphs ready for wheel panning without a separate activation click", () => {
     expect(createGraphInteractionOptions({ mode: "workspace", panActivated: false })).toMatchObject({
       zoomOnScroll: false,
+      zoomActivationKeyCode: "Control",
+      zoomOnPinch: true,
       preventScrolling: true,
       panOnScroll: true,
       panOnScrollMode: "vertical"

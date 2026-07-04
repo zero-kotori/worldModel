@@ -269,6 +269,15 @@ function lowImpactRejectForm(...observationIds: string[]) {
   return formData;
 }
 
+function unknownRejectForm(...observationIds: string[]) {
+  const formData = new FormData();
+  formData.set("returnPath", "/admin/world-model/observations#unknown-evidence");
+  for (const observationId of observationIds) {
+    formData.append("observationIds", observationId);
+  }
+  return formData;
+}
+
 function confirmedEvidenceRecord(overrides: Record<string, unknown> = {}) {
   return {
     id: "evidence_confirmed",
@@ -1036,6 +1045,18 @@ describe("world model actions", () => {
 
     expect(mocks.rejectObservation).toHaveBeenNthCalledWith(1, "observation_low_impact_1");
     expect(mocks.rejectObservation).toHaveBeenNthCalledWith(2, "observation_low_impact_2");
+    expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#unknown-evidence");
+  });
+
+  it("rejects unknown evidence queue observations in bulk and returns to the unknown evidence queue", async () => {
+    const { rejectUnknownObservationsAction } = await import("@/app/admin/world-model/actions");
+
+    await expect(rejectUnknownObservationsAction(unknownRejectForm("observation_unknown_1", "observation_unknown_2"))).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/world-model/observations?message="
+    );
+
+    expect(mocks.rejectObservation).toHaveBeenNthCalledWith(1, "observation_unknown_1");
+    expect(mocks.rejectObservation).toHaveBeenNthCalledWith(2, "observation_unknown_2");
     expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#unknown-evidence");
   });
 

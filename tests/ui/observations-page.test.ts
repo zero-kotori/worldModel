@@ -214,12 +214,52 @@ describe("world model observations page", () => {
 
     const html = renderToStaticMarkup(await ObservationsPage({ searchParams: Promise.resolve({}) }));
     const unknownSection = html.slice(html.indexOf('id="unknown-evidence"'), html.indexOf('id="duplicate-candidates"'));
+    const lowImpactForm = unknownSection.slice(0, unknownSection.indexOf("拒绝全部低影响观察"));
 
     expect(unknownSection).toContain("拒绝全部低影响观察");
+    expect(lowImpactForm).toContain('name="returnPath" value="/admin/world-model/observations#unknown-evidence"');
+    expect(lowImpactForm).toContain('name="observationIds" value="observation_low_impact"');
+    expect(lowImpactForm).toContain('name="observationIds" value="observation_low_impact_2"');
+    expect(lowImpactForm).not.toContain('name="observationIds" value="observation_unmatched"');
+  });
+
+  it("lets operators reject every observation currently in the unknown evidence queue", async () => {
+    loadWorldModelData.mockResolvedValue({
+      error: undefined,
+      beliefs: [],
+      observations: [
+        observation({
+          id: "observation_low_impact",
+          title: "Low impact signal",
+          status: "UNKNOWN",
+          metadata: { ignoredReason: "LOW_IMPACT" }
+        }),
+        observation({
+          id: "observation_unmatched",
+          title: "Unmatched signal",
+          status: "UNKNOWN",
+          metadata: { ignoredReason: "UNMATCHED" }
+        }),
+        observation({
+          id: "observation_pending",
+          title: "Pending signal",
+          status: "PENDING",
+          metadata: {}
+        })
+      ],
+      evidence: [],
+      updates: []
+    });
+    const { default: ObservationsPage } = await import("@/app/admin/world-model/observations/page");
+
+    const html = renderToStaticMarkup(await ObservationsPage({ searchParams: Promise.resolve({}) }));
+    const unknownSection = html.slice(html.indexOf('id="unknown-evidence"'), html.indexOf('id="duplicate-candidates"'));
+
+    expect(unknownSection).toContain("拒绝全部未知证据");
     expect(unknownSection).toContain('name="returnPath" value="/admin/world-model/observations#unknown-evidence"');
     expect(unknownSection).toContain('name="observationIds" value="observation_low_impact"');
-    expect(unknownSection).toContain('name="observationIds" value="observation_low_impact_2"');
-    expect(unknownSection).not.toContain('name="observationIds" value="observation_unmatched"');
+    expect(unknownSection).toContain('name="observationIds" value="observation_unmatched"');
+    expect(unknownSection).not.toContain('name="observationIds" value="observation_pending"');
   });
 
   it("shows candidate evaluation diagnostics for review candidates with recommended links", async () => {

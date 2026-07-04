@@ -471,6 +471,17 @@ export async function rejectLowImpactObservationsAction(formData: FormData) {
   });
 }
 
+export async function rejectUnknownObservationsAction(formData: FormData) {
+  await runAction(worldModelActionReturnPath(formData, "/admin/world-model/observations#unknown-evidence"), "未知证据队列已拒绝", async () => {
+    const services = getWorldModelServices();
+    const observationIds = [...new Set(values(formData, "observationIds"))];
+    if (observationIds.length === 0) throw new Error("没有可拒绝的未知证据。");
+    for (const observationId of observationIds) {
+      await services.observations.rejectObservation(observationId);
+    }
+  });
+}
+
 export async function confirmRecommendedEvidenceAction(formData: FormData) {
   await runActionWithNoticeTarget("/admin/world-model/observations#review-candidates", "推荐证据已确认并应用更新", async () => {
     const services = getWorldModelServices();

@@ -6,6 +6,7 @@ import {
   rejectDuplicateObservationsAction,
   rejectLowImpactObservationsAction,
   rejectObservationAction,
+  rejectUnknownObservationsAction,
   settleObservationAction,
   updateGraphObservationAction
 } from "@/app/admin/world-model/actions";
@@ -302,17 +303,28 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
           <EmptyState label="暂无未知证据" />
         ) : (
           <div className="grid gap-3">
-            {lowImpactObservations.length > 0 ? (
-              <form action={rejectLowImpactObservationsAction} className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              {lowImpactObservations.length > 0 ? (
+                <form action={rejectLowImpactObservationsAction}>
+                  <input type="hidden" name="returnPath" value="/admin/world-model/observations#unknown-evidence" />
+                  {lowImpactObservations.map((observation) => (
+                    <input key={observation.id} type="hidden" name="observationIds" value={observation.id} />
+                  ))}
+                  <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
+                    <Trash2 size={14} /> 拒绝全部低影响观察
+                  </button>
+                </form>
+              ) : null}
+              <form action={rejectUnknownObservationsAction}>
                 <input type="hidden" name="returnPath" value="/admin/world-model/observations#unknown-evidence" />
-                {lowImpactObservations.map((observation) => (
+                {groupedObservations.unknown.map((observation) => (
                   <input key={observation.id} type="hidden" name="observationIds" value={observation.id} />
                 ))}
                 <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
-                  <Trash2 size={14} /> 拒绝全部低影响观察
+                  <Trash2 size={14} /> 拒绝全部未知证据
                 </button>
               </form>
-            ) : null}
+            </div>
             <div className="overflow-x-auto rounded-md border border-line bg-white">
               <table className="min-w-full text-left text-sm">
                 <thead className="bg-panel text-xs text-ink/55">

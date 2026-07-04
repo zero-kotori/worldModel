@@ -4,7 +4,8 @@ import type { WorldModelGraphEdge, WorldModelGraphNode } from "@/lib/world-model
 const baseGraphInteractionOptions = {
   zoomOnScroll: false,
   zoomOnDoubleClick: false,
-  zoomOnPinch: false,
+  zoomOnPinch: true,
+  zoomActivationKeyCode: "Control",
   panOnScrollMode: PanOnScrollMode.Vertical
 } as const;
 
