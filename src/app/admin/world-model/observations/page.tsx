@@ -20,6 +20,7 @@ import {
   observationConversionSummary,
   observationIgnoredReasonLabel,
   observationQueryContextSummary,
+  observationRecommendedLinkLikelihoodSummary,
   observationReviewPriority,
   observationReviewPriorityLabel,
   observationReviewReasonLabel,
@@ -76,8 +77,8 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
                 <span className="ml-2">{target ? `${target.belief.title} · ${target.hypothesis.proposition}` : "已删除假设"}</span>
               </div>
               <div className="mt-1 text-xs text-ink/60">
-                {evidenceDirectionLabels[link.direction]} · 相关性 {link.relevance.toFixed(2)} · LR{" "}
-                {link.likelihoodRatio.toFixed(2)} · 置信度 {link.confidence.toFixed(2)}
+                {evidenceDirectionLabels[link.direction]} · 相关性 {link.relevance.toFixed(2)} ·{" "}
+                {observationRecommendedLinkLikelihoodSummary(link)} · 置信度 {link.confidence.toFixed(2)}
               </div>
               <div className="mt-1 text-xs text-ink/55">{link.rationale}</div>
             </div>

@@ -4674,6 +4674,150 @@ describe("world model services", () => {
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });
 
+  it("uses conservative effective likelihood ratios for review-required aggregator claims", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          [
+            "<rss><channel>",
+            "<item>",
+            "<title>OpenAI announces GPT-5.6 beats Claude Mythos - finance.biggo.com</title>",
+            "<description>OpenAI announces GPT-5.6 beats Claude Mythos across benchmark tiers.</description>",
+            "<link>https://finance.biggo.com/news/openai-gpt-5-6-claude-mythos</link>",
+            "</item>",
+            "</channel></rss>"
+          ].join("")
+      },
+      likelihoodEstimator: {
+        name: "llm",
+        estimate: async () => ({
+          estimator: "llm",
+          direction: "SUPPORTS",
+          relevance: 0.95,
+          likelihoodRatio: 20,
+          confidence: 0.7,
+          weight: 3,
+          rationale: "The headline directly supports the hypothesis but the source is an aggregator and requires review.",
+          modelVersion: "deepseek:deepseek-v4-flash",
+          reviewRequired: true,
+          abstain: false
+        })
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "GPT comparison",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "GPT-5.6 beats Claude Mythos",
+          priorProbability: 0.5,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Biggo finance aggregator",
+      kind: "RSS",
+      url: "https://finance.biggo.com/feed.xml",
+      adapter: "rss",
+      credentialRef: undefined,
+      credibility: 0.66,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+
+    const run = await services.sources.runSource(source.id, { candidateThreshold: 0.2 });
+    const observations = await services.observations.listObservations();
+    const recommendedLink = (observations[0].metadata.recommendedLinks as Array<{
+      likelihoodRatio: number;
+      estimatorOutputs: Array<{ likelihoodRatio?: number }>;
+    }>)[0];
+
+    expect(run).toMatchObject({ candidateCount: 1, autoAppliedCount: 0, reviewCount: 1 });
+    expect(recommendedLink.likelihoodRatio).toBe(2);
+    expect(recommendedLink.estimatorOutputs[0].likelihoodRatio).toBe(20);
+    expect(observations[0].metadata).toMatchObject({
+      recommendedLinks: [
+        {
+          hypothesisId: belief.hypotheses[0].id,
+          reviewRequired: true,
+          confidence: 0.7
+        }
+      ],
+      reviewReason: "LLM_REVIEW_REQUIRED"
+    });
+  });
+
+  it("allows higher effective likelihood ratios for official source claims", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          [
+            "<rss><channel>",
+            "<item>",
+            "<title>OpenAI announces GPT-5.6 beats Claude Mythos</title>",
+            "<description>OpenAI announces GPT-5.6 beats Claude Mythos across benchmark tiers.</description>",
+            "<link>https://openai.com/index/gpt-5-6-claude-mythos</link>",
+            "</item>",
+            "</channel></rss>"
+          ].join("")
+      },
+      likelihoodEstimator: {
+        name: "llm",
+        estimate: async () => ({
+          estimator: "llm",
+          direction: "SUPPORTS",
+          relevance: 0.95,
+          likelihoodRatio: 12,
+          confidence: 0.92,
+          weight: 3,
+          rationale: "The official source directly supports the hypothesis.",
+          modelVersion: "deepseek:deepseek-v4-flash",
+          abstain: false
+        })
+      }
+    });
+    const belief = await services.beliefs.createBelief({
+      title: "GPT comparison",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "GPT-5.6 beats Claude Mythos",
+          priorProbability: 0.5,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "OpenAI official feed",
+      kind: "RSS",
+      url: "https://openai.com/news/rss.xml",
+      adapter: "rss",
+      credentialRef: undefined,
+      credibility: 0.95,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.2
+    });
+
+    const run = await services.sources.runSource(source.id, { candidateThreshold: 0.2 });
+    const evidence = await services.evidence.listEvidence();
+
+    expect(run).toMatchObject({ candidateCount: 1, autoAppliedCount: 1, reviewCount: 0 });
+    expect(evidence[0].links[0]).toMatchObject({
+      hypothesisId: belief.hypotheses[0].id,
+      likelihoodRatio: 12,
+      confidence: 0.92
+    });
+  });
+
   it("keeps LLM candidate diagnostics on successful review candidates", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore(), {
       sourceAdapterDependencies: {

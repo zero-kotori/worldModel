@@ -214,6 +214,16 @@ export function getObservationRecommendedLinks(observation: ObservationRecord): 
   return links.map(toRecommendedLink).filter((link): link is RecommendedLink => Boolean(link));
 }
 
+export function observationRecommendedLinkLikelihoodSummary(link: RecommendedLink) {
+  const rawLikelihoodRatio = link.estimatorOutputs?.find(
+    (output) => typeof output.likelihoodRatio === "number" && Math.abs(output.likelihoodRatio - link.likelihoodRatio) > 0.000001
+  )?.likelihoodRatio;
+  if (typeof rawLikelihoodRatio === "number") {
+    return `有效 LR ${link.likelihoodRatio.toFixed(2)} · 原始 LR ${rawLikelihoodRatio.toFixed(2)}`;
+  }
+  return `LR ${link.likelihoodRatio.toFixed(2)}`;
+}
+
 export function observationReviewPriority(observation: ObservationRecord) {
   const links = getObservationRecommendedLinks(observation);
   if (links.length === 0) return 0;

@@ -4,6 +4,7 @@ import {
   observationCandidateEvaluationSummary,
   observationConversionSummary,
   observationIgnoredReasonLabel,
+  observationRecommendedLinkLikelihoodSummary,
   observationQueryContextSummary,
   observationReviewPriority,
   observationReviewPriorityLabel,
@@ -270,6 +271,39 @@ describe("world model observations UI", () => {
         ]
       }
     ]);
+  });
+
+  it("labels effective and raw likelihood ratios when scorer output was reduced", () => {
+    const [link] = getObservationRecommendedLinks(
+      observation("reduced-lr", "PENDING", {
+        recommendedLinks: [
+          {
+            hypothesisId: "hypothesis_review",
+            direction: "SUPPORTS",
+            relevance: 0.95,
+            likelihoodRatio: 2,
+            confidence: 0.7,
+            rationale: "Aggregator claim requires review.",
+            reviewRequired: true,
+            estimatorOutputs: [
+              {
+                estimator: "llm",
+                direction: "SUPPORTS",
+                relevance: 0.95,
+                likelihoodRatio: 20,
+                confidence: 0.7,
+                weight: 3,
+                rationale: "Raw LLM score was high.",
+                reviewRequired: true,
+                modelVersion: "deepseek:deepseek-v4-flash"
+              }
+            ]
+          }
+        ]
+      })
+    );
+
+    expect(observationRecommendedLinkLikelihoodSummary(link)).toBe("有效 LR 2.00 · 原始 LR 20.00");
   });
 
   it("prioritizes review candidates by likely belief impact", () => {

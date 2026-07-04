@@ -206,6 +206,52 @@ function estimatorDirection(output: EstimatorOutput): "SUPPORTS" | "OPPOSES" | "
   return "NEUTRAL";
 }
 
+function hostnameFromUrl(value: string | undefined) {
+  if (!value) return "";
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function domainMatches(hostname: string, domains: string[]) {
+  return domains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
+function sourceHosts(observation: ObservationRecord, source: ObservationSourceRecord | null) {
+  return [hostnameFromUrl(observation.url), hostnameFromUrl(source?.url)].filter(Boolean);
+}
+
+function sourceLikelihoodCap(observation: ObservationRecord, source: ObservationSourceRecord | null) {
+  const hosts = sourceHosts(observation, source);
+  if (hosts.some((host) => domainMatches(host, ["openai.com", "anthropic.com"]))) return 12;
+  if (hosts.some((host) => domainMatches(host, ["arxiv.org", "github.com", "huggingface.co"]))) return 8;
+  if (hosts.some((host) => domainMatches(host, ["biggo.com", "gigazine.net"]))) return 2;
+  if (source?.kind === "SOCIAL") return 2;
+  if (source?.kind === "PREDICTION_MARKET") return 3;
+  return 5;
+}
+
+function capLikelihoodRatio(likelihoodRatio: number, cap: number) {
+  if (likelihoodRatio >= 1) return Math.min(likelihoodRatio, cap);
+  return Math.max(likelihoodRatio, 1 / cap);
+}
+
+function conservativeLikelihoodRatio(input: {
+  likelihoodRatio: number;
+  confidence: number;
+  reviewRequired?: boolean;
+  observation: ObservationRecord;
+  source: ObservationSourceRecord | null;
+}) {
+  const sourceCap = sourceLikelihoodCap(input.observation, input.source);
+  const reviewCap = input.reviewRequired ? 3 : sourceCap;
+  const confidenceCap = input.confidence < 0.5 ? 1 + (sourceCap - 1) * Math.max(input.confidence, 0) : sourceCap;
+  const cap = Math.max(1, Math.min(sourceCap, reviewCap, confidenceCap));
+  return capLikelihoodRatio(input.likelihoodRatio, cap);
+}
+
 function canAutoApplyLinks(links: ConfirmEvidenceInput["links"], threshold: number) {
   return links.every(
     (link) =>
@@ -301,6 +347,7 @@ export function createSourceWorkflow(
     threshold: number,
     recommendationOptions: EvidenceLinkRecommendationOptions = {}
   ): Promise<EvidenceLinkRecommendationResult> {
+    const source = observation.sourceId ? await store.getSource(observation.sourceId) : null;
     const signal = `${observation.title}\n${observation.content}`;
     const queryHint = observationQueryHint(observation);
     const scopedBeliefIds = recommendationOptions.beliefIds;
@@ -380,6 +427,13 @@ export function createSourceWorkflow(
         sawUsableOutput = true;
         candidateEvaluation.usableCount += 1;
         const relevance = output.relevance ?? Math.max(candidate.score, candidate.queryHintScore);
+        const likelihoodRatio = conservativeLikelihoodRatio({
+          likelihoodRatio: output.likelihoodRatio ?? 1,
+          confidence: output.confidence ?? 0.1,
+          reviewRequired: output.reviewRequired,
+          observation,
+          source
+        });
         if (relevance < threshold) {
           candidateEvaluation.rejectedCount += 1;
           continue;
@@ -392,7 +446,7 @@ export function createSourceWorkflow(
             hypothesisId: candidate.hypothesis.id,
             direction: estimatorDirection(output),
             relevance,
-            likelihoodRatio: output.likelihoodRatio ?? 1,
+            likelihoodRatio,
             confidence: output.confidence ?? 0.1,
             rationale:
               output.rationale ??
