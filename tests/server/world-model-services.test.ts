@@ -6358,20 +6358,23 @@ describe("world model services", () => {
     const updatedBelief = await services.beliefs.getBelief(belief.id);
     const enabledPresetCount = sourcePresetDefinitions.filter((preset) => preset.enabled).length;
     const enabledNonRssPresetCount = sourcePresetDefinitions.filter((preset) => preset.enabled && preset.kind !== "RSS").length;
+    const enabledPredictionMarketPresetCount = sourcePresetDefinitions.filter(
+      (preset) => preset.enabled && preset.kind === "PREDICTION_MARKET"
+    ).length;
 
     expect(sources).toHaveLength(sourcePresetDefinitions.length);
     expect(sources.map((source) => source.name)).toEqual(expect.arrayContaining(sourcePresetDefinitions.map((preset) => preset.name)));
     expect(loop).toMatchObject({
       queryCount: 1,
       sourceRunCount: enabledPresetCount,
-      itemCount: enabledPresetCount,
+      itemCount: enabledPresetCount - enabledPredictionMarketPresetCount,
       candidateCount: 1,
       autoAppliedCount: 0,
       reviewCount: 1,
       failureCount: 0
     });
     expect(loop.deduplicatedCount).toBe(sourcePresetDefinitions.filter((preset) => preset.kind === "RSS").length - 1);
-    expect(loop.unmatchedCount).toBe(enabledNonRssPresetCount);
+    expect(loop.unmatchedCount).toBe(enabledNonRssPresetCount - enabledPredictionMarketPresetCount);
     expect(evidence).toHaveLength(0);
     expect(updatedBelief?.hypotheses[0].currentProbability).toBe(0.35);
   });

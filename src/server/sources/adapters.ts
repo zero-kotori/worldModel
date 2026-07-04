@@ -383,6 +383,31 @@ function contentFromParts(parts: Array<string | number | undefined>) {
     .join(" ");
 }
 
+const QUERY_RELEVANCE_STOP_WORDS = new Set([
+  "and",
+  "are",
+  "for",
+  "from",
+  "how",
+  "the",
+  "this",
+  "that",
+  "will",
+  "with"
+]);
+
+function queryRelevanceTerms(query: string | undefined) {
+  const tokens = query?.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return [...new Set(tokens.filter((token) => token.length >= 3 && !/^\d+$/.test(token) && !QUERY_RELEVANCE_STOP_WORDS.has(token)))];
+}
+
+function matchesPredictionMarketQuery(query: string | undefined, textParts: Array<string | number | undefined>) {
+  const terms = queryRelevanceTerms(query);
+  if (terms.length === 0) return true;
+  const haystack = contentFromParts(textParts).toLowerCase();
+  return terms.some((term) => haystack.includes(term));
+}
+
 function parseJsonResponse(text: string, sourceName: string) {
   try {
     return JSON.parse(text) as unknown;
@@ -595,11 +620,13 @@ function parsePredictionMarketObservations(
     const active = booleanField(market, "active");
     const closed = booleanField(market, "closed");
     const archived = booleanField(market, "archived");
+    const description = stringField(market, "description");
+    if (!matchesPredictionMarketQuery(query, [question, description, slug, outcomeSummary])) return [];
     return [
       {
         title: `${isPolymarketMarkets ? "Polymarket" : "Prediction market"}: ${question}`,
         content: contentFromParts([
-          stringField(market, "description") ?? question,
+          description ?? question,
           outcomeSummary,
           volume === undefined ? undefined : `Volume: ${volume}`,
           liquidity === undefined ? undefined : `Liquidity: ${liquidity}`
@@ -650,11 +677,13 @@ function parsePolymarketEventObservations(parsed: unknown, query: string | undef
       })
       .filter(Boolean);
 
+    const description = stringField(event, "description");
+    if (!matchesPredictionMarketQuery(query, [title, description, slug, ...marketSummaries])) return [];
     return [
       {
         title: `Polymarket: ${title}`,
         content: contentFromParts([
-          stringField(event, "description") ?? title,
+          description ?? title,
           markets.length > 0 ? `Markets: ${markets.length}` : undefined,
           marketSummaries.length > 0 ? marketSummaries.join(" | ") : undefined,
           volume === undefined ? undefined : `Volume: ${volume}`,

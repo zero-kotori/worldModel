@@ -585,6 +585,35 @@ describe("observation source adapters", () => {
     ]);
   });
 
+  it("filters unrelated Polymarket market results returned for a generated query", async () => {
+    const adapter = createSourceAdapter("PREDICTION_MARKET", {
+      fetchText: async () =>
+        JSON.stringify([
+          {
+            question: "Will Harvey Weinstein be sentenced to between 10 and 20 years in prison?",
+            description: "Sentencing market unrelated to model benchmarks.",
+            slug: "will-harvey-weinstein-be-sentenced-to-between-10-and-20-years-in-prison",
+            volume: "10000"
+          },
+          {
+            question: "Will Claude beat GPT on the Mythos benchmark?",
+            description: "Market tracks GPT versus Claude model performance.",
+            slug: "will-claude-beat-gpt-on-mythos",
+            volume: "25000"
+          }
+        ])
+    });
+
+    await expect(
+      adapter.fetch({ name: "Polymarket", adapter: "polymarket_markets", queries: ["gpt claude mythos"] })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        title: "Polymarket: Will Claude beat GPT on the Mythos benchmark?",
+        url: "https://polymarket.com/event/will-claude-beat-gpt-on-mythos"
+      })
+    ]);
+  });
+
   it("parses Polymarket event search results", async () => {
     const adapter = createSourceAdapter("PREDICTION_MARKET", {
       fetchText: async () =>
@@ -627,6 +656,47 @@ describe("observation source adapters", () => {
           eventId: "event-1",
           marketCount: 1
         })
+      })
+    ]);
+  });
+
+  it("filters unrelated Polymarket event results returned for a generated query", async () => {
+    const adapter = createSourceAdapter("PREDICTION_MARKET", {
+      fetchText: async () =>
+        JSON.stringify({
+          events: [
+            {
+              id: "event-sports",
+              title: "NFL: Will the Cardinals beat the Rams by more than 2.5 points?",
+              slug: "nfl-cardinals-rams-spread",
+              markets: []
+            },
+            {
+              id: "event-models",
+              title: "GPT versus Claude model benchmark",
+              slug: "gpt-versus-claude-model-benchmark",
+              markets: [
+                {
+                  question: "Will Claude outperform GPT on Mythos?",
+                  outcomes: ["Yes", "No"]
+                }
+              ]
+            }
+          ]
+        })
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "Polymarket events",
+        adapter: "polymarket_events",
+        url: "https://gamma-api.polymarket.com/events?search={query}&limit=10",
+        queries: ["gpt claude mythos"]
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        title: "Polymarket: GPT versus Claude model benchmark",
+        url: "https://polymarket.com/event/gpt-versus-claude-model-benchmark"
       })
     ]);
   });
