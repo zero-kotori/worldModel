@@ -28,6 +28,7 @@ export type AdapterDependencies = {
   fetchText?: (url: string) => Promise<string>;
   fetchImpl?: typeof fetch;
   fallbackFetchText?: (url: string) => Promise<string>;
+  preferFallbackFetch?: boolean;
   env?: Record<string, string | undefined>;
 };
 
@@ -37,6 +38,7 @@ const DEFAULT_SOURCE_USER_AGENT = "worldModel/0.1 local evidence collector";
 type FetchTextWithFallbackOptions = {
   fetchImpl?: typeof fetch;
   fallbackFetchText?: (url: string) => Promise<string>;
+  preferFallbackFetch?: boolean;
 };
 
 function networkErrorMessage(error: unknown) {
@@ -59,8 +61,17 @@ function shouldUseFallbackFetch(error: unknown) {
   );
 }
 
+function isExplicitHttpFailure(error: unknown) {
+  const message = networkErrorMessage(error);
+  return (
+    /fetch failed \d{3} for /.test(message) ||
+    /response status code does not indicate success: \d{3}/.test(message) ||
+    /returned error: \d{3}/.test(message)
+  );
+}
+
 function defaultFallbackFetchText() {
-  return process.platform === "win32" ? powershellFetchText : undefined;
+  return process.platform === "win32" ? systemFetchText : undefined;
 }
 
 export function createPowershellFetchInvocation(url: string) {
@@ -113,7 +124,82 @@ export async function powershellFetchText(url: string): Promise<string> {
   });
 }
 
+function createCurlFetchInvocation(url: string) {
+  const timeoutSeconds = Math.ceil(DEFAULT_SOURCE_FETCH_TIMEOUT_MS / 1000);
+  return {
+    command: "curl.exe",
+    args: [
+      "-L",
+      "--fail",
+      "--silent",
+      "--show-error",
+      "--max-time",
+      String(timeoutSeconds),
+      "-A",
+      DEFAULT_SOURCE_USER_AGENT,
+      "-H",
+      "Accept: application/rss+xml, application/json, text/html, */*",
+      url
+    ]
+  };
+}
+
+async function curlFetchText(url: string): Promise<string> {
+  const timeoutSeconds = Math.ceil(DEFAULT_SOURCE_FETCH_TIMEOUT_MS / 1000);
+  const invocation = createCurlFetchInvocation(url);
+  return new Promise((resolve, reject) => {
+    const child = spawn(invocation.command, invocation.args, { windowsHide: true });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`Curl fetch timed out after ${timeoutSeconds} seconds for ${url}`));
+    }, DEFAULT_SOURCE_FETCH_TIMEOUT_MS + 1000);
+
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) {
+        resolve(Buffer.concat(stdout).toString("utf8"));
+        return;
+      }
+      reject(new Error(`Curl fetch failed ${code} for ${url}: ${Buffer.concat(stderr).toString("utf8").trim()}`));
+    });
+  });
+}
+
+async function systemFetchText(url: string): Promise<string> {
+  let lastError: unknown;
+  try {
+    return await curlFetchText(url);
+  } catch (error) {
+    lastError = error;
+  }
+  try {
+    return await powershellFetchText(url);
+  } catch (error) {
+    lastError = error;
+  }
+  throw lastError;
+}
+
 export async function fetchTextWithFallback(url: string, options: FetchTextWithFallbackOptions = {}) {
+  const fallbackFetchText = options.fallbackFetchText ?? defaultFallbackFetchText();
+  let preferredFallbackError: unknown;
+  if (options.preferFallbackFetch && fallbackFetchText) {
+    try {
+      return await fallbackFetchText(url);
+    } catch (error) {
+      if (isExplicitHttpFailure(error)) throw error;
+      preferredFallbackError = error;
+    }
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DEFAULT_SOURCE_FETCH_TIMEOUT_MS);
   try {
@@ -135,7 +221,6 @@ export async function fetchTextWithFallback(url: string, options: FetchTextWithF
         cause: error
       });
     }
-    const fallbackFetchText = options.fallbackFetchText ?? defaultFallbackFetchText();
     if (fallbackFetchText && shouldUseFallbackFetch(error)) {
       try {
         return await fallbackFetchText(url);
@@ -147,6 +232,12 @@ export async function fetchTextWithFallback(url: string, options: FetchTextWithF
           { cause: fallbackError }
         );
       }
+    }
+    if (preferredFallbackError) {
+      throw new Error(
+        `System fetch failed and primary fetch failed for ${url}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: preferredFallbackError }
+      );
     }
     throw error;
   } finally {
@@ -300,13 +391,18 @@ function parseJsonResponse(text: string, sourceName: string) {
   }
 }
 
+function preferFallbackFetchForSource(dependencies: AdapterDependencies) {
+  return dependencies.preferFallbackFetch ?? (process.platform === "win32" && !dependencies.fetchImpl && !dependencies.fallbackFetchText);
+}
+
 function createFetchAdapter(kind: ObservationSourceKind, dependencies: AdapterDependencies): SourceAdapter {
   const fetchText =
     dependencies.fetchText ??
     ((url: string) =>
       fetchTextWithFallback(url, {
         fetchImpl: dependencies.fetchImpl,
-        fallbackFetchText: dependencies.fallbackFetchText
+        fallbackFetchText: dependencies.fallbackFetchText,
+        preferFallbackFetch: preferFallbackFetchForSource(dependencies)
       }));
   return {
     kind,
@@ -375,7 +471,7 @@ async function fetchQueryRssObservations(
   const observations = results
     .filter((result): result is PromiseFulfilledResult<RawObservation[]> => result.status === "fulfilled")
     .flatMap((result) => result.value);
-  if (observations.length > 0 || urls.length === 0) return observations;
+  if (observations.length > 0 || urls.length === 0 || results.some((result) => result.status === "fulfilled")) return observations;
 
   const firstError = results.find((result): result is PromiseRejectedResult => result.status === "rejected")?.reason;
   const reason = firstError instanceof Error ? firstError.message : String(firstError);
@@ -731,7 +827,8 @@ export function createSourceAdapter(kind: ObservationSourceKind, dependencies: A
     ((url: string) =>
       fetchTextWithFallback(url, {
         fetchImpl: dependencies.fetchImpl,
-        fallbackFetchText: dependencies.fallbackFetchText
+        fallbackFetchText: dependencies.fallbackFetchText,
+        preferFallbackFetch: preferFallbackFetchForSource(dependencies)
       }));
 
   if (kind === "RSS") {

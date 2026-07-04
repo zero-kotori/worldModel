@@ -53,7 +53,7 @@ describe("observation source adapters", () => {
         });
       });
       vi.stubGlobal("fetch", fetchSpy);
-      const adapter = createSourceAdapter("WEB_PAGE");
+      const adapter = createSourceAdapter("WEB_PAGE", { preferFallbackFetch: false });
       const result = adapter.fetch({ name: "Slow page", adapter: "web", url: "https://slow.example/page" });
       const assertion = expect(result).rejects.toThrow("Source fetch timed out after 30 seconds for https://slow.example/page");
 
@@ -82,6 +82,37 @@ describe("observation source adapters", () => {
       })
     ).resolves.toBe("system response");
     expect(fallbackFetchText).toHaveBeenCalledWith("https://news.example/rss");
+  });
+
+  it("can use the system fetch path before Node fetch for source collection", async () => {
+    const primaryFetch = vi.fn(async () => new Response("primary response", { status: 200 }));
+    const fallbackFetchText = vi.fn(async () => "system response");
+
+    await expect(
+      fetchTextWithFallback("https://gamma-api.polymarket.com/markets?search=AI", {
+        fetchImpl: primaryFetch as unknown as typeof fetch,
+        fallbackFetchText,
+        preferFallbackFetch: true
+      })
+    ).resolves.toBe("system response");
+    expect(primaryFetch).not.toHaveBeenCalled();
+    expect(fallbackFetchText).toHaveBeenCalledWith("https://gamma-api.polymarket.com/markets?search=AI");
+  });
+
+  it("does not retry Node fetch after a preferred system fetch returns an explicit HTTP failure", async () => {
+    const primaryFetch = vi.fn(async () => new Response("primary response", { status: 200 }));
+    const fallbackFetchText = vi.fn(async () => {
+      throw new Error("System fetch failed 1 for https://www.reddit.com/search: Response status code does not indicate success: 403");
+    });
+
+    await expect(
+      fetchTextWithFallback("https://www.reddit.com/search", {
+        fetchImpl: primaryFetch as unknown as typeof fetch,
+        fallbackFetchText,
+        preferFallbackFetch: true
+      })
+    ).rejects.toThrow("403");
+    expect(primaryFetch).not.toHaveBeenCalled();
   });
 
   it("does not hide explicit HTTP failures behind the system fallback", async () => {
@@ -170,6 +201,21 @@ describe("observation source adapters", () => {
       }
     ]);
     expect(requestedUrls).toEqual(["https://news.example/rss?q=bad-query", "https://news.example/rss?q=career%20signal"]);
+  });
+
+  it("treats successful empty query RSS feeds as empty observations instead of fetch failures", async () => {
+    const adapter = createSourceAdapter("RSS", {
+      fetchText: async () => `<?xml version="1.0"?><rss><channel></channel></rss>`
+    });
+
+    await expect(
+      adapter.fetch({
+        name: "Empty News Search",
+        adapter: "rss_query",
+        url: "https://news.example/rss?q={query}",
+        queries: ["first", "second"]
+      })
+    ).resolves.toEqual([]);
   });
 
   it("fails a query source only when every query URL fails", async () => {
