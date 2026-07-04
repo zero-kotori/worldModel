@@ -627,6 +627,30 @@ describe("world model sources UI", () => {
     expect(notice).toContain("失败原因：没有可运行来源：当前没有配置非手动且启用的采集来源。");
   });
 
+  it("explains empty evidence loop collection results", () => {
+    const notice = automationLoopActionNotice({
+      mode: "review-only",
+      queryCount: 2,
+      sourceRunCount: 2,
+      skippedSourceCount: 0,
+      skippedSources: [],
+      itemCount: 0,
+      reprocessedObservationCount: 0,
+      deduplicatedCount: 0,
+      candidateCount: 0,
+      autoAppliedCount: 0,
+      reviewCount: 0,
+      lowImpactCount: 0,
+      unmatchedCount: 0,
+      failureCount: 0,
+      queries: [],
+      runs: []
+    });
+
+    expect(notice).toContain("未采集到观察：所选来源没有返回可用结果");
+    expect(notice).toContain("建议放宽限定来源");
+  });
+
   it("summarizes dry-run query counts in action notices", () => {
     expect(
       automationLoopDryRunActionNotice({

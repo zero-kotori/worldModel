@@ -375,6 +375,19 @@ function latestLoopFailureReason(result: EvidenceLoopResult) {
   return runErrorSummary(failedRun);
 }
 
+function emptyCollectionNotice(result: EvidenceLoopResult) {
+  if (
+    result.sourceRunCount <= 0 ||
+    result.itemCount > 0 ||
+    result.reprocessedObservationCount > 0 ||
+    result.failureCount > 0
+  ) {
+    return "";
+  }
+
+  return "；未采集到观察：所选来源没有返回可用结果，建议放宽限定来源或增加新闻、论文、代码仓库、模型平台等来源。";
+}
+
 export function automationLoopActionNotice(result: EvidenceLoopResult) {
   const followups = [
     ...(result.reviewCount > 0 ? [`${result.reviewCount} 条待审候选需要确认`] : []),
@@ -384,7 +397,10 @@ export function automationLoopActionNotice(result: EvidenceLoopResult) {
   const message = automationLoopSuccessMessage(result);
   const failureReason = latestLoopFailureReason(result);
   const failureNotice = failureReason ? `；失败原因：${failureReason}` : "";
-  return followups.length > 0 ? `${message}${failureNotice}；仍需处理：${followups.join("；")}` : `${message}${failureNotice}`;
+  const emptyNotice = emptyCollectionNotice(result);
+  return followups.length > 0
+    ? `${message}${failureNotice}${emptyNotice}；仍需处理：${followups.join("；")}`
+    : `${message}${failureNotice}${emptyNotice}`;
 }
 
 export function automationLoopDryRunActionNotice(result: {
