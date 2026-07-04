@@ -27,6 +27,7 @@ import type {
   LikelihoodRunRecord,
   ModelArtifactRecord,
   ObservationRecord,
+  ObservationCleanupMode,
   ObservationRunRecord,
   ObservationSourceRecord,
   WorldModelStore
@@ -234,6 +235,10 @@ function toAutomationHeartbeatRecord(record: AutomationHeartbeat): AutomationHea
   };
 }
 
+function observationCleanupMode(value: string): ObservationCleanupMode {
+  return value === "REJECT" || value === "DELETE" ? value : "KEEP";
+}
+
 function toAutomationWorkerConfigRecord(record: AutomationWorkerConfig): AutomationWorkerConfigRecord {
   return {
     id: record.id,
@@ -251,6 +256,9 @@ function toAutomationWorkerConfigRecord(record: AutomationWorkerConfig): Automat
     autoConfirmThreshold: record.autoConfirmThreshold ?? undefined,
     bootstrapDefaultSources: record.bootstrapDefaultSources,
     forceAutoApply: record.forceAutoApply,
+    duplicateObservationCleanup: observationCleanupMode(record.duplicateObservationCleanup),
+    unmatchedObservationCleanup: observationCleanupMode(record.unmatchedObservationCleanup),
+    lowImpactObservationCleanup: observationCleanupMode(record.lowImpactObservationCleanup),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
@@ -714,6 +722,9 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           autoConfirmThreshold: input.autoConfirmThreshold,
           bootstrapDefaultSources: input.bootstrapDefaultSources,
           forceAutoApply: input.forceAutoApply,
+          duplicateObservationCleanup: input.duplicateObservationCleanup ?? "REJECT",
+          unmatchedObservationCleanup: input.unmatchedObservationCleanup ?? "KEEP",
+          lowImpactObservationCleanup: input.lowImpactObservationCleanup ?? "KEEP",
           updatedAt: input.updatedAt
         },
         create: {
@@ -732,6 +743,9 @@ export function createPrismaWorldModelStore(prisma: PrismaClient): WorldModelSto
           autoConfirmThreshold: input.autoConfirmThreshold,
           bootstrapDefaultSources: input.bootstrapDefaultSources,
           forceAutoApply: input.forceAutoApply,
+          duplicateObservationCleanup: input.duplicateObservationCleanup ?? "REJECT",
+          unmatchedObservationCleanup: input.unmatchedObservationCleanup ?? "KEEP",
+          lowImpactObservationCleanup: input.lowImpactObservationCleanup ?? "KEEP",
           createdAt: input.createdAt,
           updatedAt: input.updatedAt
         }

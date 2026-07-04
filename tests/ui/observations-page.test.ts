@@ -217,6 +217,7 @@ describe("world model observations page", () => {
     const lowImpactForm = unknownSection.slice(0, unknownSection.indexOf("拒绝全部低影响观察"));
 
     expect(unknownSection).toContain("拒绝全部低影响观察");
+    expect(unknownSection).toContain("删除全部低影响观察");
     expect(lowImpactForm).toContain('name="returnPath" value="/admin/world-model/observations#unknown-evidence"');
     expect(lowImpactForm).toContain('name="observationIds" value="observation_low_impact"');
     expect(lowImpactForm).toContain('name="observationIds" value="observation_low_impact_2"');
@@ -256,6 +257,7 @@ describe("world model observations page", () => {
     const unknownSection = html.slice(html.indexOf('id="unknown-evidence"'), html.indexOf('id="duplicate-candidates"'));
 
     expect(unknownSection).toContain("拒绝全部未知证据");
+    expect(unknownSection).toContain("删除全部未知证据");
     expect(unknownSection).toContain('name="returnPath" value="/admin/world-model/observations#unknown-evidence"');
     expect(unknownSection).toContain('name="observationIds" value="observation_low_impact"');
     expect(unknownSection).toContain('name="observationIds" value="observation_unmatched"');
@@ -515,6 +517,7 @@ describe("world model observations page", () => {
     expect(html).toContain('id="O-001"');
     const duplicateSection = html.slice(html.indexOf('id="duplicate-candidates"'), html.indexOf('id="observation-pool"'));
     expect(duplicateSection).toContain("拒绝全部重复候选");
+    expect(duplicateSection).toContain("删除全部重复候选");
     expect(duplicateSection).toContain('name="returnPath" value="/admin/world-model/observations#duplicate-candidates"');
     expect(duplicateSection).toContain('name="observationIds" value="observation_duplicate"');
     expect(duplicateSection).toContain('name="observationIds" value="observation_duplicate_2"');

@@ -343,6 +343,9 @@ describe("automation worker route", () => {
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
       forceAutoApply: true,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP",
       createdAt: new Date("2026-06-12T00:00:00.000Z"),
       updatedAt: new Date("2026-06-12T00:00:00.000Z")
     };
@@ -403,7 +406,10 @@ describe("automation worker route", () => {
       candidateThreshold: 0.3,
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
-      forceAutoApply: true
+      forceAutoApply: true,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP"
     });
     expect(start).toHaveBeenCalledWith(
       {
@@ -422,7 +428,10 @@ describe("automation worker route", () => {
           candidateThreshold: 0.3,
           autoConfirmThreshold: 0.82,
           bootstrapDefaultSources: true,
-          forceAutoApply: true
+          forceAutoApply: true,
+          duplicateObservationCleanup: "REJECT",
+          unmatchedObservationCleanup: "KEEP",
+          lowImpactObservationCleanup: "KEEP"
         }
       },
       expect.objectContaining({ automation: expect.objectContaining({ saveWorkerConfig }) })
@@ -542,7 +551,10 @@ describe("automation worker route", () => {
       candidateThreshold: 0.3,
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP"
     });
     expect(start).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -651,7 +663,10 @@ describe("automation worker route", () => {
       candidateThreshold: 0.3,
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP"
     });
     expect(start).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -728,7 +743,10 @@ describe("automation worker route", () => {
       candidateThreshold: 0.3,
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP"
     });
     expect(start).toHaveBeenCalledWith(
       expect.objectContaining({

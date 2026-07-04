@@ -105,7 +105,10 @@ function loopOptionsFromConfig(config: AutomationWorkerConfigRecord): EvidenceLo
     sourceIds: config.sourceIds,
     maxObservations: config.maxObservations,
     bootstrapDefaultSources: config.bootstrapDefaultSources,
-    forceAutoApply: config.forceAutoApply
+    forceAutoApply: config.forceAutoApply,
+    duplicateObservationCleanup: config.duplicateObservationCleanup,
+    unmatchedObservationCleanup: config.unmatchedObservationCleanup,
+    lowImpactObservationCleanup: config.lowImpactObservationCleanup
   };
 }
 

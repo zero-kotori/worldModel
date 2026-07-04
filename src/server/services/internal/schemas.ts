@@ -200,7 +200,10 @@ export const automationWorkerConfigSchema = z.object({
   candidateThreshold: probabilitySchema.optional(),
   autoConfirmThreshold: probabilitySchema.optional(),
   bootstrapDefaultSources: z.boolean(),
-  forceAutoApply: z.boolean()
+  forceAutoApply: z.boolean(),
+  duplicateObservationCleanup: z.enum(["KEEP", "REJECT", "DELETE"]).optional(),
+  unmatchedObservationCleanup: z.enum(["KEEP", "REJECT", "DELETE"]).optional(),
+  lowImpactObservationCleanup: z.enum(["KEEP", "REJECT", "DELETE"]).optional()
 });
 
 export function parseBeliefInput(input: CreateBeliefInput) {

@@ -3,6 +3,9 @@ import { Check, Plus, Save, Trash2, X } from "lucide-react";
 import {
   confirmRecommendedEvidenceAction,
   createObservationAction,
+  deleteDuplicateObservationsAction,
+  deleteLowImpactObservationsAction,
+  deleteUnknownObservationsAction,
   rejectDuplicateObservationsAction,
   rejectLowImpactObservationsAction,
   rejectObservationAction,
@@ -317,6 +320,17 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
                   </button>
                 </form>
               ) : null}
+              {lowImpactObservations.length > 0 ? (
+                <form action={deleteLowImpactObservationsAction}>
+                  <input type="hidden" name="returnPath" value="/admin/world-model/observations#unknown-evidence" />
+                  {lowImpactObservations.map((observation) => (
+                    <input key={observation.id} type="hidden" name="observationIds" value={observation.id} />
+                  ))}
+                  <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
+                    <Trash2 size={14} /> 删除全部低影响观察
+                  </button>
+                </form>
+              ) : null}
               <form action={rejectUnknownObservationsAction}>
                 <input type="hidden" name="returnPath" value="/admin/world-model/observations#unknown-evidence" />
                 {groupedObservations.unknown.map((observation) => (
@@ -324,6 +338,15 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
                 ))}
                 <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
                   <Trash2 size={14} /> 拒绝全部未知证据
+                </button>
+              </form>
+              <form action={deleteUnknownObservationsAction}>
+                <input type="hidden" name="returnPath" value="/admin/world-model/observations#unknown-evidence" />
+                {groupedObservations.unknown.map((observation) => (
+                  <input key={observation.id} type="hidden" name="observationIds" value={observation.id} />
+                ))}
+                <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
+                  <Trash2 size={14} /> 删除全部未知证据
                 </button>
               </form>
             </div>
@@ -424,6 +447,15 @@ export default async function ObservationsPage({ searchParams }: PageProps) {
               ))}
               <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
                 <Trash2 size={14} /> 拒绝全部重复候选
+              </button>
+            </form>
+            <form action={deleteDuplicateObservationsAction} className="flex justify-end">
+              <input type="hidden" name="returnPath" value="/admin/world-model/observations#duplicate-candidates" />
+              {groupedObservations.duplicates.map((observation) => (
+                <input key={observation.id} type="hidden" name="observationIds" value={observation.id} />
+              ))}
+              <button className="inline-flex min-h-8 items-center gap-2 rounded-md border border-berry px-2 text-xs font-semibold text-berry">
+                <Trash2 size={14} /> 删除全部重复候选
               </button>
             </form>
             <div className="overflow-x-auto rounded-md border border-line bg-white">

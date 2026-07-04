@@ -73,6 +73,9 @@ describe("world model sources page", () => {
     expect(html).toContain("立即自动闭环");
     expect(html).toContain('name="forceAutoApply" value="true"');
     expect(html).toContain('name="bootstrapDefaultSources" value="true"');
+    expect(html).toContain('name="duplicateObservationCleanup" value="REJECT"');
+    expect(html).toContain('name="unmatchedObservationCleanup" value="KEEP"');
+    expect(html).toContain('name="lowImpactObservationCleanup" value="KEEP"');
     expect(html).toContain('name="maxQueries" value="3"');
     expect(html).toContain('name="maxSources" value="3"');
     expect(html).not.toContain('name="reviewOnly" value="true"');
@@ -501,6 +504,9 @@ describe("world model sources page", () => {
           autoConfirmThreshold: 0.82,
           bootstrapDefaultSources: true,
           forceAutoApply: true,
+          duplicateObservationCleanup: "REJECT",
+          unmatchedObservationCleanup: "DELETE",
+          lowImpactObservationCleanup: "REJECT",
           createdAt: new Date("2026-06-12T00:00:00.000Z"),
           updatedAt: new Date("2026-06-12T00:00:00.000Z")
         }
@@ -646,6 +652,9 @@ describe("world model sources page", () => {
           autoConfirmThreshold: 0.82,
           bootstrapDefaultSources: true,
           forceAutoApply: true,
+          duplicateObservationCleanup: "REJECT",
+          unmatchedObservationCleanup: "DELETE",
+          lowImpactObservationCleanup: "REJECT",
           createdAt: new Date("2026-06-12T00:00:00.000Z"),
           updatedAt: new Date("2026-06-12T00:00:00.000Z")
         }
@@ -659,10 +668,19 @@ describe("world model sources page", () => {
     expect(html).toContain("最大来源");
     expect(html).toContain("Worker 信念");
     expect(html).toContain("Worker 来源");
+    expect(html).toContain("重复候选");
+    expect(html).toContain("未知观察");
+    expect(html).toContain("低影响观察");
+    expect(html).toContain('name="duplicateObservationCleanup"');
+    expect(html).toContain('name="unmatchedObservationCleanup"');
+    expect(html).toContain('name="lowImpactObservationCleanup"');
     expect(html).toMatch(/<input type="number"[^>]*name="maxQueries"[^>]*value="4"/);
     expect(html).toMatch(/<input type="number"[^>]*name="maxSources"[^>]*value="2"/);
     expect(html).toMatch(/<option value="belief_ai_agents" selected="">/);
     expect(html).toMatch(/<option value="source_github" selected="">/);
+    expect(html).toMatch(/<select[^>]*name="duplicateObservationCleanup"[\s\S]*<option value="REJECT" selected="">拒绝<\/option>/);
+    expect(html).toMatch(/<select[^>]*name="unmatchedObservationCleanup"[\s\S]*<option value="DELETE" selected="">删除<\/option>/);
+    expect(html).toMatch(/<select[^>]*name="lowImpactObservationCleanup"[\s\S]*<option value="REJECT" selected="">拒绝<\/option>/);
   });
 
   it("prefills the worker form from the running worker config when multiple configs exist", async () => {

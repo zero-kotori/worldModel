@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   updateObservation: vi.fn(),
   listObservations: vi.fn(),
   rejectObservation: vi.fn(),
+  deleteObservation: vi.fn(),
   settleObservation: vi.fn(),
   applyEvidence: vi.fn(),
   updateAndReapplyEvidence: vi.fn(),
@@ -72,6 +73,7 @@ vi.mock("@/server/services", () => ({
       updateObservation: mocks.updateObservation,
       listObservations: mocks.listObservations,
       rejectObservation: mocks.rejectObservation,
+      deleteObservation: mocks.deleteObservation,
       settleObservation: mocks.settleObservation
     },
     sources: {
@@ -402,6 +404,9 @@ function evidenceLoopForm() {
   formData.set("candidateThreshold", "0.2");
   formData.set("autoConfirmThreshold", "0.8");
   formData.set("bootstrapDefaultSources", "on");
+  formData.set("duplicateObservationCleanup", "REJECT");
+  formData.set("unmatchedObservationCleanup", "KEEP");
+  formData.set("lowImpactObservationCleanup", "KEEP");
   return formData;
 }
 
@@ -441,6 +446,9 @@ function workerForm() {
   formData.set("autoConfirmThreshold", "0.82");
   formData.set("bootstrapDefaultSources", "on");
   formData.set("forceAutoApply", "on");
+  formData.set("duplicateObservationCleanup", "REJECT");
+  formData.set("unmatchedObservationCleanup", "DELETE");
+  formData.set("lowImpactObservationCleanup", "REJECT");
   return formData;
 }
 
@@ -585,6 +593,8 @@ describe("world model actions", () => {
     mocks.listObservations.mockResolvedValue([]);
     mocks.rejectObservation.mockReset();
     mocks.rejectObservation.mockResolvedValue({});
+    mocks.deleteObservation.mockReset();
+    mocks.deleteObservation.mockResolvedValue({});
     mocks.settleObservation.mockReset();
     mocks.settleObservation.mockResolvedValue({});
     mocks.applyEvidence.mockReset();
@@ -709,6 +719,9 @@ describe("world model actions", () => {
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
       forceAutoApply: true,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "DELETE",
+      lowImpactObservationCleanup: "REJECT",
       createdAt: new Date("2026-06-12T00:00:00.000Z"),
       updatedAt: new Date("2026-06-12T00:00:00.000Z")
     });
@@ -1036,6 +1049,18 @@ describe("world model actions", () => {
     expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#duplicate-candidates");
   });
 
+  it("deletes duplicate observation candidates in bulk and returns to the duplicate queue", async () => {
+    const { deleteDuplicateObservationsAction } = await import("@/app/admin/world-model/actions");
+
+    await expect(deleteDuplicateObservationsAction(duplicateRejectForm("observation_dup_1", "observation_dup_2"))).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/world-model/observations?message="
+    );
+
+    expect(mocks.deleteObservation).toHaveBeenNthCalledWith(1, "observation_dup_1");
+    expect(mocks.deleteObservation).toHaveBeenNthCalledWith(2, "observation_dup_2");
+    expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#duplicate-candidates");
+  });
+
   it("rejects low-impact unknown observations in bulk and returns to the unknown evidence queue", async () => {
     const { rejectLowImpactObservationsAction } = await import("@/app/admin/world-model/actions");
 
@@ -1048,6 +1073,18 @@ describe("world model actions", () => {
     expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#unknown-evidence");
   });
 
+  it("deletes low-impact unknown observations in bulk and returns to the unknown evidence queue", async () => {
+    const { deleteLowImpactObservationsAction } = await import("@/app/admin/world-model/actions");
+
+    await expect(deleteLowImpactObservationsAction(lowImpactRejectForm("observation_low_impact_1", "observation_low_impact_2"))).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/world-model/observations?message="
+    );
+
+    expect(mocks.deleteObservation).toHaveBeenNthCalledWith(1, "observation_low_impact_1");
+    expect(mocks.deleteObservation).toHaveBeenNthCalledWith(2, "observation_low_impact_2");
+    expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#unknown-evidence");
+  });
+
   it("rejects unknown evidence queue observations in bulk and returns to the unknown evidence queue", async () => {
     const { rejectUnknownObservationsAction } = await import("@/app/admin/world-model/actions");
 
@@ -1057,6 +1094,18 @@ describe("world model actions", () => {
 
     expect(mocks.rejectObservation).toHaveBeenNthCalledWith(1, "observation_unknown_1");
     expect(mocks.rejectObservation).toHaveBeenNthCalledWith(2, "observation_unknown_2");
+    expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#unknown-evidence");
+  });
+
+  it("deletes unknown evidence queue observations in bulk and returns to the unknown evidence queue", async () => {
+    const { deleteUnknownObservationsAction } = await import("@/app/admin/world-model/actions");
+
+    await expect(deleteUnknownObservationsAction(unknownRejectForm("observation_unknown_1", "observation_unknown_2"))).rejects.toThrow(
+      "NEXT_REDIRECT:/admin/world-model/observations?message="
+    );
+
+    expect(mocks.deleteObservation).toHaveBeenNthCalledWith(1, "observation_unknown_1");
+    expect(mocks.deleteObservation).toHaveBeenNthCalledWith(2, "observation_unknown_2");
     expect(mocks.redirect.mock.calls[0]?.[0]).toContain("#unknown-evidence");
   });
 
@@ -1514,7 +1563,10 @@ describe("world model actions", () => {
       candidateThreshold: 0.2,
       autoConfirmThreshold: 0.8,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP"
     });
   });
 
@@ -1700,7 +1752,10 @@ describe("world model actions", () => {
       candidateThreshold: 0.2,
       autoConfirmThreshold: 0.8,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP"
     });
     expect(redirectedMessage()).toContain("LLM 评估风险");
   });
@@ -1722,7 +1777,10 @@ describe("world model actions", () => {
       candidateThreshold: 0.2,
       autoConfirmThreshold: 0.8,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "KEEP",
+      lowImpactObservationCleanup: "KEEP"
     });
     expect(redirectedMessage()).toContain("没有当前有效假设");
   });
@@ -1747,7 +1805,10 @@ describe("world model actions", () => {
       candidateThreshold: 0.3,
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
-      forceAutoApply: true
+      forceAutoApply: true,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "DELETE",
+      lowImpactObservationCleanup: "REJECT"
     });
     expect(mocks.startWorker).toHaveBeenCalledWith(
       {
@@ -1766,7 +1827,10 @@ describe("world model actions", () => {
           candidateThreshold: 0.3,
           autoConfirmThreshold: 0.82,
           bootstrapDefaultSources: true,
-          forceAutoApply: true
+          forceAutoApply: true,
+          duplicateObservationCleanup: "REJECT",
+          unmatchedObservationCleanup: "DELETE",
+          lowImpactObservationCleanup: "REJECT"
         }
       },
       expect.objectContaining({
@@ -1820,7 +1884,10 @@ describe("world model actions", () => {
       candidateThreshold: 0.3,
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "DELETE",
+      lowImpactObservationCleanup: "REJECT"
     });
     expect(mocks.startWorker).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1866,7 +1933,10 @@ describe("world model actions", () => {
       candidateThreshold: 0.3,
       autoConfirmThreshold: 0.82,
       bootstrapDefaultSources: true,
-      forceAutoApply: false
+      forceAutoApply: false,
+      duplicateObservationCleanup: "REJECT",
+      unmatchedObservationCleanup: "DELETE",
+      lowImpactObservationCleanup: "REJECT"
     });
     expect(mocks.startWorker).toHaveBeenCalledWith(
       expect.objectContaining({

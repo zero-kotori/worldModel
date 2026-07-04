@@ -15,6 +15,7 @@ export const observationStatusLabels: Record<ObservationStatus, string> = {
   UNKNOWN: "未知证据",
   CONFIRMED: "已确认",
   REJECTED: "已拒绝",
+  DELETED: "已删除",
   SETTLED: "已结算"
 };
 

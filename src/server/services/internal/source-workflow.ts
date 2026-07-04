@@ -50,11 +50,16 @@ import type {
   EvidenceLoopResult,
   EvidenceLoopSkippedSource,
   HypothesisRecord,
+  ObservationCleanupMode,
   ObservationRecord,
   ObservationRunRecord,
   ObservationSourceRecord,
   RunSourceOptions
 } from "@/server/services/types";
+
+const DEFAULT_DUPLICATE_OBSERVATION_CLEANUP: ObservationCleanupMode = "REJECT";
+const DEFAULT_UNMATCHED_OBSERVATION_CLEANUP: ObservationCleanupMode = "KEEP";
+const DEFAULT_LOW_IMPACT_OBSERVATION_CLEANUP: ObservationCleanupMode = "KEEP";
 
 export type SourceWorkflowDependencies = {
   createObservation(input: CreateObservationInput): Promise<ObservationRecord>;
@@ -87,6 +92,10 @@ export type SourceWorkflow = {
 
 function sourceSupportsGeneratedQueries(source: Pick<ObservationSourceRecord, "kind" | "url">) {
   return Boolean(source.url?.includes("{query}") || DEFAULT_QUERY_TEMPLATE_SOURCE_KINDS.has(source.kind));
+}
+
+function normalizedObservationCleanupMode(value: ObservationCleanupMode | undefined, fallback: ObservationCleanupMode) {
+  return value === "REJECT" || value === "DELETE" ? value : fallback;
 }
 
 function metadataNonNegativeInteger(value: unknown) {
@@ -342,6 +351,11 @@ export function createSourceWorkflow(
 ): SourceWorkflow {
   const { store, options } = context;
 
+  async function applyObservationCleanup(observation: ObservationRecord, mode: ObservationCleanupMode) {
+    if (mode === "KEEP") return observation;
+    return store.updateObservation(observation.id, { status: mode === "DELETE" ? "DELETED" : "REJECTED" });
+  }
+
   async function recommendedEvidenceLinks(
     observation: ObservationRecord,
     threshold: number,
@@ -528,7 +542,7 @@ export function createSourceWorkflow(
     const links = recommendation.links;
 
     if (links.length === 0) {
-      await store.updateObservation(observation.id, {
+      const updated = await store.updateObservation(observation.id, {
         status: "UNKNOWN",
         metadata: {
           ...cleanCandidateLifecycleMetadata(observation.metadata),
@@ -536,6 +550,10 @@ export function createSourceWorkflow(
           ...(recommendation.candidateEvaluation ? { candidateEvaluation: recommendation.candidateEvaluation } : {})
         }
       });
+      await applyObservationCleanup(
+        updated,
+        normalizedObservationCleanupMode(processingOptions.unmatchedObservationCleanup, DEFAULT_UNMATCHED_OBSERVATION_CLEANUP)
+      );
       result.unmatchedCount = 1;
       return result;
     }
@@ -543,7 +561,7 @@ export function createSourceWorkflow(
     const cleanMetadata = cleanCandidateLifecycleMetadata(observation.metadata);
     const preview = await dependencies.createCandidatePreview(links, observation.credibility);
     if (largestProbabilityDelta(preview) < DEFAULT_MIN_CANDIDATE_PROBABILITY_DELTA) {
-      await store.updateObservation(observation.id, {
+      const updated = await store.updateObservation(observation.id, {
         status: "UNKNOWN",
         metadata: {
           ...cleanMetadata,
@@ -552,6 +570,10 @@ export function createSourceWorkflow(
           ...(recommendation.candidateEvaluation ? { candidateEvaluation: recommendation.candidateEvaluation } : {})
         }
       });
+      await applyObservationCleanup(
+        updated,
+        normalizedObservationCleanupMode(processingOptions.lowImpactObservationCleanup, DEFAULT_LOW_IMPACT_OBSERVATION_CLEANUP)
+      );
       result.lowImpactCount = 1;
       return result;
     }
@@ -975,6 +997,18 @@ export function createSourceWorkflow(
         beliefIds: runOptions.beliefIds,
         sourceIds: [source.id]
       });
+      const duplicateObservationCleanup = normalizedObservationCleanupMode(
+        runOptions.duplicateObservationCleanup,
+        DEFAULT_DUPLICATE_OBSERVATION_CLEANUP
+      );
+      const unmatchedObservationCleanup = normalizedObservationCleanupMode(
+        runOptions.unmatchedObservationCleanup,
+        DEFAULT_UNMATCHED_OBSERVATION_CLEANUP
+      );
+      const lowImpactObservationCleanup = normalizedObservationCleanupMode(
+        runOptions.lowImpactObservationCleanup,
+        DEFAULT_LOW_IMPACT_OBSERVATION_CLEANUP
+      );
 
       for (const rawObservation of rawObservations) {
         const observation = await dependencies.createObservation({
@@ -990,6 +1024,7 @@ export function createSourceWorkflow(
 
         if (observation.status === "DUPLICATE") {
           deduplicatedCount += 1;
+          await applyObservationCleanup(observation, duplicateObservationCleanup);
           continue;
         }
 
@@ -999,7 +1034,10 @@ export function createSourceWorkflow(
           autoConfirm: autoApplyPolicy.autoConfirm,
           reviewOnly: autoApplyPolicy.reviewOnly,
           reviewReason: autoApplyPolicy.reviewReason,
-          beliefIds: beliefIds.size > 0 ? beliefIds : undefined
+          beliefIds: beliefIds.size > 0 ? beliefIds : undefined,
+          duplicateObservationCleanup,
+          unmatchedObservationCleanup,
+          lowImpactObservationCleanup
         });
         candidateCount += processed.candidateCount;
         autoAppliedCount += processed.autoAppliedCount;
@@ -1157,6 +1195,18 @@ export function createSourceWorkflow(
       .map((item) => item.observation);
     const selected = loopOptions.maxObservations ? observations.slice(0, loopOptions.maxObservations) : observations;
     const total = emptyCandidateProcessingResult();
+    const duplicateObservationCleanup = normalizedObservationCleanupMode(
+      loopOptions.duplicateObservationCleanup,
+      DEFAULT_DUPLICATE_OBSERVATION_CLEANUP
+    );
+    const unmatchedObservationCleanup = normalizedObservationCleanupMode(
+      loopOptions.unmatchedObservationCleanup,
+      DEFAULT_UNMATCHED_OBSERVATION_CLEANUP
+    );
+    const lowImpactObservationCleanup = normalizedObservationCleanupMode(
+      loopOptions.lowImpactObservationCleanup,
+      DEFAULT_LOW_IMPACT_OBSERVATION_CLEANUP
+    );
 
     for (const observation of selected) {
       const source = observation.sourceId ? await store.getSource(observation.sourceId) : null;
@@ -1177,7 +1227,10 @@ export function createSourceWorkflow(
         autoConfirm: autoApplyPolicy.autoConfirm,
         reviewOnly: autoApplyPolicy.reviewOnly,
         reviewReason: autoApplyPolicy.reviewReason,
-        beliefIds: beliefIds.size > 0 ? beliefIds : undefined
+        beliefIds: beliefIds.size > 0 ? beliefIds : undefined,
+        duplicateObservationCleanup,
+        unmatchedObservationCleanup,
+        lowImpactObservationCleanup
       };
       const processed =
         await (async () => {
@@ -1372,7 +1425,10 @@ export function createSourceWorkflow(
         maxObservations: loopOptions.maxObservations,
         forceAutoApply: loopOptions.forceAutoApply,
         beliefIds: loopOptions.beliefIds,
-        queries
+        queries,
+        duplicateObservationCleanup: loopOptions.duplicateObservationCleanup,
+        unmatchedObservationCleanup: loopOptions.unmatchedObservationCleanup,
+        lowImpactObservationCleanup: loopOptions.lowImpactObservationCleanup
       });
       runs.push({ ...run, sourceCode: sourceCode(source.id) });
     }

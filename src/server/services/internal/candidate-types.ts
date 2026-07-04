@@ -1,4 +1,4 @@
-import type { ConfirmEvidenceInput } from "@/server/services/types";
+import type { ConfirmEvidenceInput, ObservationCleanupMode } from "@/server/services/types";
 
 export type CandidateEvaluationMetadata = {
   estimator: string;
@@ -25,6 +25,9 @@ export type CandidateObservationProcessingOptions = {
   reviewOnly?: boolean;
   reviewReason?: string;
   beliefIds?: ReadonlySet<string>;
+  duplicateObservationCleanup?: ObservationCleanupMode;
+  unmatchedObservationCleanup?: ObservationCleanupMode;
+  lowImpactObservationCleanup?: ObservationCleanupMode;
 };
 
 export type CandidateObservationProcessingResult = {

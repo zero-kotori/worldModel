@@ -27,7 +27,10 @@ function defaultWorkerConfig(id = DEFAULT_WORKER_ID): PersistedWorkerConfig {
     candidateThreshold: 0.25,
     autoConfirmThreshold: 0.85,
     bootstrapDefaultSources: true,
-    forceAutoApply: true
+    forceAutoApply: true,
+    duplicateObservationCleanup: "REJECT",
+    unmatchedObservationCleanup: "KEEP",
+    lowImpactObservationCleanup: "KEEP"
   };
 }
 
@@ -47,7 +50,10 @@ function persistableConfig(config: AutomationWorkerConfigRecord): PersistedWorke
     candidateThreshold: config.candidateThreshold,
     autoConfirmThreshold: config.autoConfirmThreshold,
     bootstrapDefaultSources: config.bootstrapDefaultSources,
-    forceAutoApply: config.forceAutoApply
+    forceAutoApply: config.forceAutoApply,
+    duplicateObservationCleanup: config.duplicateObservationCleanup,
+    unmatchedObservationCleanup: config.unmatchedObservationCleanup,
+    lowImpactObservationCleanup: config.lowImpactObservationCleanup
   };
 }
 
@@ -77,7 +83,10 @@ function loopOptionsFromConfig(config: PersistedWorkerConfig): EvidenceLoopOptio
     candidateThreshold: config.candidateThreshold,
     autoConfirmThreshold: config.autoConfirmThreshold,
     bootstrapDefaultSources: config.bootstrapDefaultSources,
-    forceAutoApply: config.forceAutoApply
+    forceAutoApply: config.forceAutoApply,
+    duplicateObservationCleanup: config.duplicateObservationCleanup,
+    unmatchedObservationCleanup: config.unmatchedObservationCleanup,
+    lowImpactObservationCleanup: config.lowImpactObservationCleanup
   };
 }
 

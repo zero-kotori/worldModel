@@ -10,6 +10,7 @@ export function createObservationService(
     createObservation: observationWorkflow.createObservation,
     updateObservation: observationWorkflow.updateObservation,
     rejectObservation: observationWorkflow.rejectObservation,
+    deleteObservation: observationWorkflow.deleteObservation,
     settleObservation: observationWorkflow.settleObservation,
     listObservations() {
       return context.store.listObservations();

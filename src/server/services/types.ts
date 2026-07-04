@@ -15,7 +15,8 @@ export type ObservationSourceKind =
   | "GDELT"
   | "PREDICTION_MARKET"
   | "SOCIAL";
-export type ObservationStatus = "PENDING" | "DUPLICATE" | "UNKNOWN" | "CONFIRMED" | "REJECTED" | "SETTLED";
+export type ObservationStatus = "PENDING" | "DUPLICATE" | "UNKNOWN" | "CONFIRMED" | "REJECTED" | "DELETED" | "SETTLED";
+export type ObservationCleanupMode = "KEEP" | "REJECT" | "DELETE";
 export type EvidenceConfirmationMode = "MANUAL" | "AUTO";
 export type EvidenceStatus = "ACTIVE" | "SUPERSEDED" | "REJECTED" | "DELETED";
 export type EvidenceDirection = "SUPPORTS" | "OPPOSES" | "MIXED" | "NEUTRAL";
@@ -188,6 +189,9 @@ export type AutomationWorkerConfigRecord = {
   autoConfirmThreshold?: number;
   bootstrapDefaultSources: boolean;
   forceAutoApply: boolean;
+  duplicateObservationCleanup?: ObservationCleanupMode;
+  unmatchedObservationCleanup?: ObservationCleanupMode;
+  lowImpactObservationCleanup?: ObservationCleanupMode;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -201,6 +205,9 @@ export type RunSourceOptions = {
   maxQueries?: number;
   maxObservations?: number;
   queries?: EvidenceLoopQuery[];
+  duplicateObservationCleanup?: ObservationCleanupMode;
+  unmatchedObservationCleanup?: ObservationCleanupMode;
+  lowImpactObservationCleanup?: ObservationCleanupMode;
 };
 
 export type RunDryRunOptions = {
@@ -251,6 +258,9 @@ export type EvidenceLoopOptions = {
   maxSources?: number;
   bootstrapDefaultSources?: boolean;
   forceAutoApply?: boolean;
+  duplicateObservationCleanup?: ObservationCleanupMode;
+  unmatchedObservationCleanup?: ObservationCleanupMode;
+  lowImpactObservationCleanup?: ObservationCleanupMode;
 };
 
 export type EvidenceLoopSkippedSource =
@@ -539,6 +549,7 @@ export type WorldModelServices = {
     createObservation(input: CreateObservationInput): Promise<ObservationRecord>;
     updateObservation(id: string, input: UpdateObservationInput): Promise<ObservationRecord>;
     rejectObservation(id: string): Promise<ObservationRecord>;
+    deleteObservation(id: string): Promise<ObservationRecord>;
     settleObservation(input: SettleObservationInput): Promise<SettleObservationResult>;
     listObservations(): Promise<ObservationRecord[]>;
   };

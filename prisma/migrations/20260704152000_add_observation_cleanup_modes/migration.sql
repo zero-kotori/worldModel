@@ -1,0 +1,6 @@
+ALTER TYPE "ObservationStatus" ADD VALUE IF NOT EXISTS 'DELETED';
+
+ALTER TABLE "AutomationWorkerConfig"
+  ADD COLUMN IF NOT EXISTS "duplicateObservationCleanup" TEXT NOT NULL DEFAULT 'REJECT',
+  ADD COLUMN IF NOT EXISTS "unmatchedObservationCleanup" TEXT NOT NULL DEFAULT 'KEEP',
+  ADD COLUMN IF NOT EXISTS "lowImpactObservationCleanup" TEXT NOT NULL DEFAULT 'KEEP';

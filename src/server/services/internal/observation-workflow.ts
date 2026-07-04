@@ -30,6 +30,7 @@ export type ObservationWorkflow = {
   createObservation(input: CreateObservationInput): Promise<ObservationRecord>;
   updateObservation(observationId: string, input: UpdateObservationInput): Promise<ObservationRecord>;
   rejectObservation(observationId: string): Promise<ObservationRecord>;
+  deleteObservation(observationId: string): Promise<ObservationRecord>;
   settleObservation(input: SettleObservationInput): Promise<{ observation: ObservationRecord; hypothesis: HypothesisRecord }>;
   toDedupeObservation(observation: RawObservationInput | CreateObservationInput): ObservationForDedupe;
 };
@@ -153,6 +154,15 @@ export function createObservationWorkflow(
     return store.updateObservation(observation.id, { status: "REJECTED" });
   }
 
+  async function deleteObservation(observationId: string) {
+    const observation = await store.getObservation(observationId);
+    if (!observation) throw new Error(`Observation not found: ${observationId}`);
+    if (observation.status === "CONFIRMED") {
+      throw new Error("Confirmed observations must be deleted from the evidence record.");
+    }
+    return store.updateObservation(observation.id, { status: "DELETED" });
+  }
+
   async function settleObservation(input: SettleObservationInput) {
     const observation = await store.getObservation(input.observationId);
     if (!observation) throw new Error(`Observation not found: ${input.observationId}`);
@@ -189,6 +199,7 @@ export function createObservationWorkflow(
     createObservation,
     updateObservation,
     rejectObservation,
+    deleteObservation,
     settleObservation,
     toDedupeObservation
   };

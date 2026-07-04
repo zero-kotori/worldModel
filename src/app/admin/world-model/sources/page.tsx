@@ -78,9 +78,18 @@ function fallbackWorkerConfig() {
     candidateThreshold: 0.25,
     autoConfirmThreshold: 0.85,
     bootstrapDefaultSources: true,
-    forceAutoApply: true
+    forceAutoApply: true,
+    duplicateObservationCleanup: "REJECT",
+    unmatchedObservationCleanup: "KEEP",
+    lowImpactObservationCleanup: "KEEP"
   };
 }
+
+const observationCleanupOptions = [
+  { value: "KEEP", label: "保留" },
+  { value: "REJECT", label: "拒绝" },
+  { value: "DELETE", label: "删除" }
+];
 
 const sourceKindOptions = ["RSS", "WEB_PAGE", "SEARCH", "GITHUB", "HUGGING_FACE", "GDELT", "PREDICTION_MARKET", "SOCIAL"].map(
   (value) => ({ value, label: value })
@@ -391,6 +400,9 @@ export default async function SourcesPage({ searchParams }: PageProps) {
               <input type="hidden" name="autoConfirmThreshold" value="0.85" />
               <input type="hidden" name="bootstrapDefaultSources" value="true" />
               <input type="hidden" name="forceAutoApply" value="true" />
+              <input type="hidden" name="duplicateObservationCleanup" value="REJECT" />
+              <input type="hidden" name="unmatchedObservationCleanup" value="KEEP" />
+              <input type="hidden" name="lowImpactObservationCleanup" value="KEEP" />
               {scopedBeliefIds.map((beliefId) => (
                 <input key={beliefId} type="hidden" name="beliefIds" value={beliefId} />
               ))}
@@ -440,6 +452,9 @@ export default async function SourcesPage({ searchParams }: PageProps) {
             <Field label="单次最大观察" name="maxObservations" type="number" min="1" defaultValue="20" />
             <Field label="候选识别阈值" name="candidateThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.25" />
             <Field label="自动应用阈值" name="autoConfirmThreshold" type="number" step="0.01" min="0" max="1" defaultValue="0.85" />
+            <SelectField label="重复候选" name="duplicateObservationCleanup" options={observationCleanupOptions} defaultValue="REJECT" />
+            <SelectField label="未知观察" name="unmatchedObservationCleanup" options={observationCleanupOptions} defaultValue="KEEP" />
+            <SelectField label="低影响观察" name="lowImpactObservationCleanup" options={observationCleanupOptions} defaultValue="KEEP" />
             <label className="flex items-center gap-2 text-sm text-ink/70">
               <input name="reviewOnly" type="checkbox" defaultChecked /> 仅生成待审
             </label>
@@ -529,6 +544,24 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                 type="number"
                 min="60"
                 defaultValue={Math.floor(workerConfig.maxIntervalMs / 1000)}
+              />
+              <SelectField
+                label="重复候选"
+                name="duplicateObservationCleanup"
+                options={observationCleanupOptions}
+                defaultValue={workerConfig.duplicateObservationCleanup ?? "REJECT"}
+              />
+              <SelectField
+                label="未知观察"
+                name="unmatchedObservationCleanup"
+                options={observationCleanupOptions}
+                defaultValue={workerConfig.unmatchedObservationCleanup ?? "KEEP"}
+              />
+              <SelectField
+                label="低影响观察"
+                name="lowImpactObservationCleanup"
+                options={observationCleanupOptions}
+                defaultValue={workerConfig.lowImpactObservationCleanup ?? "KEEP"}
               />
               <label className="flex items-center gap-2 text-sm text-ink/70">
                 <input name="reviewOnly" type="checkbox" defaultChecked={workerConfig.reviewOnly} /> 仅生成待审

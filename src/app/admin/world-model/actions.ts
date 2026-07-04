@@ -26,6 +26,7 @@ import type {
   BeliefCategory,
   EvidenceLoopResult,
   HypothesisStance,
+  ObservationCleanupMode,
   ObservationRecord,
   ObservationSourceKind,
   RunSourceOptions,
@@ -85,6 +86,11 @@ function settlementStatus(value: string) {
   throw new Error("Invalid settlement outcome.");
 }
 
+function observationCleanupMode(formData: FormData, name: string, fallback: ObservationCleanupMode): ObservationCleanupMode {
+  const value = text(formData, name);
+  return value === "REJECT" || value === "DELETE" ? value : fallback;
+}
+
 function defaultWorkerConfig(id = "default"): Omit<AutomationWorkerConfigRecord, "createdAt" | "updatedAt"> {
   return {
     id,
@@ -99,7 +105,10 @@ function defaultWorkerConfig(id = "default"): Omit<AutomationWorkerConfigRecord,
     candidateThreshold: 0.25,
     autoConfirmThreshold: 0.85,
     bootstrapDefaultSources: true,
-    forceAutoApply: true
+    forceAutoApply: true,
+    duplicateObservationCleanup: "REJECT",
+    unmatchedObservationCleanup: "KEEP",
+    lowImpactObservationCleanup: "KEEP"
   };
 }
 
@@ -119,7 +128,10 @@ function workerConfigFromForm(formData: FormData, enabled: boolean): Omit<Automa
     candidateThreshold: optionalNumber(formData, "candidateThreshold"),
     autoConfirmThreshold: optionalNumber(formData, "autoConfirmThreshold"),
     bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
-    forceAutoApply: bool(formData, "forceAutoApply")
+    forceAutoApply: bool(formData, "forceAutoApply"),
+    duplicateObservationCleanup: observationCleanupMode(formData, "duplicateObservationCleanup", "REJECT"),
+    unmatchedObservationCleanup: observationCleanupMode(formData, "unmatchedObservationCleanup", "KEEP"),
+    lowImpactObservationCleanup: observationCleanupMode(formData, "lowImpactObservationCleanup", "KEEP")
   };
 }
 
@@ -134,7 +146,10 @@ function loopOptionsFromWorkerConfig(config: Omit<AutomationWorkerConfigRecord, 
     candidateThreshold: config.candidateThreshold,
     autoConfirmThreshold: config.autoConfirmThreshold,
     bootstrapDefaultSources: config.bootstrapDefaultSources,
-    forceAutoApply: config.forceAutoApply
+    forceAutoApply: config.forceAutoApply,
+    duplicateObservationCleanup: config.duplicateObservationCleanup,
+    unmatchedObservationCleanup: config.unmatchedObservationCleanup,
+    lowImpactObservationCleanup: config.lowImpactObservationCleanup
   };
 }
 
@@ -460,6 +475,17 @@ export async function rejectDuplicateObservationsAction(formData: FormData) {
   });
 }
 
+export async function deleteDuplicateObservationsAction(formData: FormData) {
+  await runAction(worldModelActionReturnPath(formData, "/admin/world-model/observations#duplicate-candidates"), "重复候选已删除", async () => {
+    const services = getWorldModelServices();
+    const observationIds = [...new Set(values(formData, "observationIds"))];
+    if (observationIds.length === 0) throw new Error("没有可删除的重复候选。");
+    for (const observationId of observationIds) {
+      await services.observations.deleteObservation(observationId);
+    }
+  });
+}
+
 export async function rejectLowImpactObservationsAction(formData: FormData) {
   await runAction(worldModelActionReturnPath(formData, "/admin/world-model/observations#unknown-evidence"), "低影响观察已拒绝", async () => {
     const services = getWorldModelServices();
@@ -471,6 +497,17 @@ export async function rejectLowImpactObservationsAction(formData: FormData) {
   });
 }
 
+export async function deleteLowImpactObservationsAction(formData: FormData) {
+  await runAction(worldModelActionReturnPath(formData, "/admin/world-model/observations#unknown-evidence"), "低影响观察已删除", async () => {
+    const services = getWorldModelServices();
+    const observationIds = [...new Set(values(formData, "observationIds"))];
+    if (observationIds.length === 0) throw new Error("没有可删除的低影响观察。");
+    for (const observationId of observationIds) {
+      await services.observations.deleteObservation(observationId);
+    }
+  });
+}
+
 export async function rejectUnknownObservationsAction(formData: FormData) {
   await runAction(worldModelActionReturnPath(formData, "/admin/world-model/observations#unknown-evidence"), "未知证据队列已拒绝", async () => {
     const services = getWorldModelServices();
@@ -478,6 +515,17 @@ export async function rejectUnknownObservationsAction(formData: FormData) {
     if (observationIds.length === 0) throw new Error("没有可拒绝的未知证据。");
     for (const observationId of observationIds) {
       await services.observations.rejectObservation(observationId);
+    }
+  });
+}
+
+export async function deleteUnknownObservationsAction(formData: FormData) {
+  await runAction(worldModelActionReturnPath(formData, "/admin/world-model/observations#unknown-evidence"), "未知证据队列已删除", async () => {
+    const services = getWorldModelServices();
+    const observationIds = [...new Set(values(formData, "observationIds"))];
+    if (observationIds.length === 0) throw new Error("没有可删除的未知证据。");
+    for (const observationId of observationIds) {
+      await services.observations.deleteObservation(observationId);
     }
   });
 }
@@ -752,17 +800,22 @@ export async function runEvidenceLoopAction(formData: FormData) {
   const defaultPath = worldModelActionReturnPath(formData, "/admin/world-model/sources");
   await runActionWithDynamicNoticeTarget(defaultPath, async () => {
     const services = getWorldModelServices();
+    const beliefIds = optionalValues(formData, "beliefIds");
+    const sourceIds = optionalValues(formData, "sourceIds");
     const guarded = await guardAutoApply(services, {
       reviewOnly: bool(formData, "reviewOnly"),
-      beliefIds: optionalValues(formData, "beliefIds"),
-      sourceIds: optionalValues(formData, "sourceIds"),
+      ...(beliefIds ? { beliefIds } : {}),
+      ...(sourceIds ? { sourceIds } : {}),
       maxQueries: optionalNumber(formData, "maxQueries"),
       maxSources: optionalNumber(formData, "maxSources"),
       maxObservations: optionalNumber(formData, "maxObservations"),
       candidateThreshold: optionalNumber(formData, "candidateThreshold"),
       autoConfirmThreshold: optionalNumber(formData, "autoConfirmThreshold"),
       bootstrapDefaultSources: bool(formData, "bootstrapDefaultSources"),
-      forceAutoApply: bool(formData, "forceAutoApply")
+      forceAutoApply: bool(formData, "forceAutoApply"),
+      duplicateObservationCleanup: observationCleanupMode(formData, "duplicateObservationCleanup", "REJECT"),
+      unmatchedObservationCleanup: observationCleanupMode(formData, "unmatchedObservationCleanup", "KEEP"),
+      lowImpactObservationCleanup: observationCleanupMode(formData, "lowImpactObservationCleanup", "KEEP")
     });
     const result = await services.automation.runEvidenceLoop(guarded.options);
     const message = automationLoopActionNotice(result);

@@ -57,6 +57,7 @@ enum ObservationStatus {
   UNKNOWN
   CONFIRMED
   REJECTED
+  DELETED
   SETTLED
 }
 
@@ -314,6 +315,9 @@ model AutomationWorkerConfig {
   autoConfirmThreshold    Float?
   bootstrapDefaultSources Boolean  @default(true)
   forceAutoApply          Boolean  @default(false)
+  duplicateObservationCleanup String @default("REJECT")
+  unmatchedObservationCleanup String @default("KEEP")
+  lowImpactObservationCleanup String @default("KEEP")
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 

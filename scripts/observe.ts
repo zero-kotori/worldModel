@@ -256,7 +256,10 @@ function loopOptionsFromWorkerConfig(config: AutomationWorkerConfigRecord): Evid
     candidateThreshold: config.candidateThreshold,
     autoConfirmThreshold: config.autoConfirmThreshold,
     bootstrapDefaultSources: config.bootstrapDefaultSources,
-    forceAutoApply: config.forceAutoApply
+    forceAutoApply: config.forceAutoApply,
+    duplicateObservationCleanup: config.duplicateObservationCleanup,
+    unmatchedObservationCleanup: config.unmatchedObservationCleanup,
+    lowImpactObservationCleanup: config.lowImpactObservationCleanup
   };
 }
 

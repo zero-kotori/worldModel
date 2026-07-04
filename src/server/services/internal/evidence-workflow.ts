@@ -49,6 +49,9 @@ export function createEvidenceWorkflow(
     if (observation.status === "REJECTED") {
       throw new Error("Rejected observations cannot be confirmed as evidence.");
     }
+    if (observation.status === "DELETED") {
+      throw new Error("Deleted observations cannot be confirmed as evidence.");
+    }
     const existingEvidence = (await store.listEvidence()).find((item) => item.observationId === observation.id);
     if (existingEvidence) throw new Error(`Observation is already confirmed as evidence: ${observation.title}`);
 

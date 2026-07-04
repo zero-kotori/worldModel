@@ -192,6 +192,59 @@ describe("world model services", () => {
     expect(duplicate.duplicateOfId).toBe(first.id);
   });
 
+  it("rejects duplicate candidates by default during source runs", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>Repeated signal</title></head><body>Repeated source content.</body></html>"
+      }
+    });
+    const source = await services.sources.createSource({
+      name: "Repeated page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/repeated-signal",
+      adapter: "web_page",
+      credibility: 0.6,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.9
+    });
+
+    await services.sources.runSource(source.id);
+    const run = await services.sources.runSource(source.id);
+    const observations = await services.observations.listObservations();
+
+    expect(run.deduplicatedCount).toBe(1);
+    expect(observations).toHaveLength(2);
+    expect(observations.find((observation) => observation.duplicateOfId)?.status).toBe("REJECTED");
+  });
+
+  it("can soft-delete duplicate candidates during source runs", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>Repeated signal</title></head><body>Repeated source content.</body></html>"
+      }
+    });
+    const source = await services.sources.createSource({
+      name: "Repeated page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/repeated-signal",
+      adapter: "web_page",
+      credibility: 0.6,
+      enabled: true,
+      autoConfirm: false,
+      autoConfirmThreshold: 0.9
+    });
+
+    await services.sources.runSource(source.id);
+    const run = await services.sources.runSource(source.id, { duplicateObservationCleanup: "DELETE" });
+    const observations = await services.observations.listObservations();
+
+    expect(run.deduplicatedCount).toBe(1);
+    expect(observations.find((observation) => observation.duplicateOfId)?.status).toBe("DELETED");
+  });
+
   it("updates an editable observation without changing its review status", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
     const observation = await services.observations.createObservation({
@@ -5035,6 +5088,64 @@ describe("world model services", () => {
 
     expect(override.evidence.links).toHaveLength(1);
     expect(manuallyUpdatedBelief?.hypotheses[0].currentProbability).toBeGreaterThan(0.4);
+  });
+
+  it("can soft-delete low-impact observations during source runs", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore(), {
+      sourceAdapterDependencies: {
+        fetchText: async () =>
+          "<html><head><title>AI agents mention engineering teams</title></head><body>The source is relevant but does not materially change the claim.</body></html>"
+      },
+      likelihoodEstimator: {
+        name: "llm",
+        estimate: async () => ({
+          estimator: "llm",
+          direction: "SUPPORTS",
+          relevance: 0.9,
+          likelihoodRatio: 1.01,
+          confidence: 0.9,
+          weight: 3,
+          rationale: "The evidence is relevant but barely changes the likelihood.",
+          modelVersion: "deepseek:deepseek-chat",
+          abstain: false
+        })
+      }
+    });
+    await services.beliefs.createBelief({
+      title: "AI agents",
+      category: "AI_TREND",
+      description: "",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [
+        {
+          proposition: "AI agents accelerate engineering teams",
+          priorProbability: 0.4,
+          stance: "SUPPORTS",
+          notes: ""
+        }
+      ]
+    });
+    const source = await services.sources.createSource({
+      name: "Low impact page",
+      kind: "WEB_PAGE",
+      url: "https://example.com/agent-low-impact",
+      adapter: "web_page",
+      credibility: 0.8,
+      enabled: true,
+      autoConfirm: true,
+      autoConfirmThreshold: 0.7
+    });
+
+    const run = await services.sources.runSource(source.id, { lowImpactObservationCleanup: "DELETE" });
+    const observations = await services.observations.listObservations();
+
+    expect(run.lowImpactCount).toBe(1);
+    expect(observations[0]).toMatchObject({
+      status: "DELETED",
+      metadata: {
+        ignoredReason: "LOW_IMPACT"
+      }
+    });
   });
 
   it("reprocesses low-impact observations on later evidence loop runs", async () => {
