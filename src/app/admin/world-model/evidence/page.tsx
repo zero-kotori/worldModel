@@ -65,6 +65,9 @@ function formatPointDelta(value: number) {
   return `${sign}${points.toFixed(1)}pp`;
 }
 
+const hypothesisLinkRowClass = "grid gap-2 border-t border-line py-3 lg:grid-cols-[minmax(18rem,2fr)_repeat(4,minmax(8rem,1fr))]";
+const hypothesisLinkSummaryClass = "flex items-start gap-2 text-sm text-ink/75";
+
 function withEffectiveHypotheses(beliefs: BeliefRecord[], referenceTime = new Date()) {
   return beliefs
     .map((belief) => ({
@@ -146,8 +149,8 @@ function HypothesisLinkControls({
         <div key={belief.id} className="grid gap-2 rounded-md border border-line bg-panel p-3">
           <div className="text-sm font-semibold text-ink">{belief.title}</div>
           {belief.hypotheses.map((hypothesis) => (
-            <div key={hypothesis.id} className="grid gap-2 border-t border-line py-3 lg:grid-cols-5">
-              <label className="flex items-start gap-2 text-sm text-ink/75 lg:col-span-2">
+            <div key={hypothesis.id} className={hypothesisLinkRowClass}>
+              <label className={hypothesisLinkSummaryClass}>
                 <input name="linkHypothesisIds" value={hypothesis.id} type="checkbox" className="mt-1" />
                 <span>
                   <span className="font-mono text-xs">{readableCode(hypothesisCodes, hypothesis.id, "H")}</span>
@@ -189,7 +192,9 @@ function HypothesisLinkControls({
                 max="1"
                 defaultValue="0.7"
               />
-              <TextAreaField label="解释" name={`rationale:${hypothesis.id}`} defaultValue={defaultRationale} />
+              <div className="lg:col-span-5">
+                <TextAreaField label="解释" name={`rationale:${hypothesis.id}`} defaultValue={defaultRationale} />
+              </div>
             </div>
           ))}
         </div>
@@ -368,8 +373,8 @@ export default async function EvidencePage({ searchParams }: PageProps) {
               {selectedRecommendedLinks.map((link) => {
                 const target = hypothesisById.get(link.hypothesisId);
                 return (
-                  <div key={link.hypothesisId} className="grid gap-2 border-t border-line py-3 lg:grid-cols-5">
-                    <label className="flex items-start gap-2 text-sm text-ink/75 lg:col-span-2">
+                  <div key={link.hypothesisId} className={hypothesisLinkRowClass}>
+                    <label className={hypothesisLinkSummaryClass}>
                       <input name="linkHypothesisIds" value={link.hypothesisId} type="checkbox" defaultChecked className="mt-1" />
                       <span>
                         <span className="font-mono text-xs">{readableCode(hypothesisCodes, link.hypothesisId, "H")}</span>
@@ -410,7 +415,9 @@ export default async function EvidencePage({ searchParams }: PageProps) {
                       max="1"
                       defaultValue={link.confidence}
                     />
-                    <TextAreaField label="解释" name={`rationale:${link.hypothesisId}`} defaultValue={link.rationale} />
+                    <div className="lg:col-span-5">
+                      <TextAreaField label="解释" name={`rationale:${link.hypothesisId}`} defaultValue={link.rationale} />
+                    </div>
                   </div>
                 );
               })}
@@ -623,8 +630,8 @@ export default async function EvidencePage({ searchParams }: PageProps) {
                       {allHypotheses.map(({ belief, hypothesis }) => {
                         const link = evidence.links.find((candidate) => candidate.hypothesisId === hypothesis.id);
                         return (
-                          <div key={hypothesis.id} className="grid gap-2 border-t border-line py-3 lg:grid-cols-5">
-                            <label className="flex items-start gap-2 text-sm text-ink/75 lg:col-span-2">
+                          <div key={hypothesis.id} className={hypothesisLinkRowClass}>
+                            <label className={hypothesisLinkSummaryClass}>
                               <input
                                 name="linkHypothesisIds"
                                 value={hypothesis.id}
@@ -669,11 +676,13 @@ export default async function EvidencePage({ searchParams }: PageProps) {
                               max="1"
                               defaultValue={link?.confidence ?? 0.5}
                             />
-                            <TextAreaField
-                              label="解释"
-                              name={`rationale:${hypothesis.id}`}
-                              defaultValue={link?.rationale ?? "证据编辑后重新评估"}
-                            />
+                            <div className="lg:col-span-5">
+                              <TextAreaField
+                                label="解释"
+                                name={`rationale:${hypothesis.id}`}
+                                defaultValue={link?.rationale ?? "证据编辑后重新评估"}
+                              />
+                            </div>
                           </div>
                         );
                       })}

@@ -204,6 +204,8 @@ describe("world model evidence page", () => {
     expect(html).toContain('name="direction:hypothesis_oppose"');
     expect(html).toContain('name="relevance:hypothesis_support"');
     expect(html).toContain('name="likelihoodRatio:hypothesis_oppose"');
+    expect(html).toContain("lg:grid-cols-[minmax(18rem,2fr)_repeat(4,minmax(8rem,1fr))]");
+    expect(html).toContain('class="lg:col-span-5"');
     expect(html).not.toContain('name="hypothesisIds"');
   });
 
