@@ -123,6 +123,34 @@ describe("world model services", () => {
     expect(belief.hypotheses[0].currentProbability).toBeCloseTo(0.4, 8);
   });
 
+  it("marks beliefs as internal by default and preserves external origin", async () => {
+    const services = createWorldModelServices(createInMemoryWorldModelStore());
+
+    const internalBelief = await services.beliefs.createBelief({
+      title: "Internal belief",
+      category: "AI_TREND",
+      description: "Created by the private admin workflow.",
+      probabilityMode: "INDEPENDENT",
+      hypotheses: [{ proposition: "Internal hypothesis", priorProbability: 0.5, notes: "" }]
+    });
+    const externalBelief = await services.beliefs.createBelief({
+      title: "External belief",
+      category: "TECH_TREND",
+      description: "Created from the public site.",
+      probabilityMode: "INDEPENDENT",
+      origin: "EXTERNAL",
+      hypotheses: [{ proposition: "External hypothesis", priorProbability: 0.4, notes: "" }]
+    });
+    const listed = await services.beliefs.listBeliefs();
+
+    expect(internalBelief.origin).toBe("INTERNAL");
+    expect(externalBelief.origin).toBe("EXTERNAL");
+    expect(listed.map((belief) => [belief.title, belief.origin])).toEqual([
+      ["Internal belief", "INTERNAL"],
+      ["External belief", "EXTERNAL"]
+    ]);
+  });
+
   it("rejects invalid belief and hypothesis input", async () => {
     const services = createWorldModelServices(createInMemoryWorldModelStore());
 

@@ -66,6 +66,7 @@ describe("world model models page", () => {
           category: "AI_TREND",
           description: "",
           probabilityMode: "INDEPENDENT",
+          origin: "INTERNAL",
           status: "ACTIVE",
           createdAt: new Date("2026-06-11T00:00:00.000Z"),
           updatedAt: new Date("2026-06-11T00:00:00.000Z"),

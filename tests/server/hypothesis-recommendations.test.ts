@@ -9,6 +9,7 @@ function belief(hypothesis: HypothesisRecord): BeliefRecord {
     category: "AI_TREND",
     description: "Track whether enterprise procurement timelines are realistic.",
     probabilityMode: "INDEPENDENT",
+    origin: "INTERNAL",
     status: "ACTIVE",
     hypotheses: [hypothesis],
     createdAt,

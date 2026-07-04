@@ -14,6 +14,7 @@ export const createBeliefSchema = z.object({
   category: z.enum(["AI_TREND", "INVESTMENT", "TECH_TREND", "CAREER", "SOURCE_RELIABILITY"]),
   description: z.string(),
   probabilityMode: z.enum(["MUTUALLY_EXCLUSIVE", "INDEPENDENT"]),
+  origin: z.enum(["INTERNAL", "EXTERNAL"]).optional(),
   sourceObservationId: z.string().trim().min(1).optional(),
   hypotheses: z
     .array(

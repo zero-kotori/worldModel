@@ -179,6 +179,7 @@ export function createBeliefWorkflow(
         category: parsed.category,
         description: parsed.description,
         probabilityMode: parsed.probabilityMode,
+        origin: parsed.origin ?? "INTERNAL",
         status: "ACTIVE",
         createdAt,
         updatedAt: createdAt

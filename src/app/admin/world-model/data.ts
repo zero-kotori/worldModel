@@ -35,7 +35,7 @@ async function loadOptionalLlmEvaluation() {
   }
 }
 
-export async function loadWorldModelData() {
+export async function loadWorldModelData(options: { includeExternalBeliefs?: boolean } = {}) {
   const { llmEvaluation, error: llmEvaluationError } = await loadOptionalLlmEvaluation();
 
   if (!process.env.WORLDMODEL_DATABASE_URL) {
@@ -71,8 +71,9 @@ export async function loadWorldModelData() {
       services.updates.listEvents(),
       services.likelihood.listRuns()
     ]);
+    const visibleBeliefs = options.includeExternalBeliefs ? beliefs : beliefs.filter((belief) => belief.origin !== "EXTERNAL");
     return {
-      beliefs,
+      beliefs: visibleBeliefs,
       observations,
       evidence,
       sources,

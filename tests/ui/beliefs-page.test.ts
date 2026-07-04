@@ -32,6 +32,7 @@ function belief(input: Partial<BeliefRecord> = {}): BeliefRecord {
     category: "AI_TREND",
     description: "Track whether AI agents improve delivery.",
     probabilityMode: "INDEPENDENT",
+    origin: "INTERNAL",
     status: "ACTIVE",
     createdAt,
     updatedAt: createdAt,
@@ -60,6 +61,25 @@ describe("world model beliefs page", () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     loadWorldModelData.mockReset();
     recommendHypotheses.mockReset();
+  });
+
+  it("requests external beliefs when the external query toggle is enabled", async () => {
+    loadWorldModelData.mockResolvedValue({
+      error: undefined,
+      beliefs: [belief({ origin: "EXTERNAL", title: "External belief" })],
+      observations: [],
+      evidence: [],
+      updates: []
+    });
+    recommendHypotheses.mockResolvedValue([]);
+    const { default: BeliefsPage } = await import("@/app/admin/world-model/beliefs/page");
+
+    const html = renderToStaticMarkup(await BeliefsPage({ searchParams: Promise.resolve({ external: "1" }) }));
+
+    expect(loadWorldModelData).toHaveBeenCalledWith({ includeExternalBeliefs: true });
+    expect(html).toContain("External belief");
+    expect(html).toContain("外部");
+    expect(html).toContain('href="/admin/world-model/beliefs"');
   });
 
   it("shows the source observation for observation-driven hypothesis recommendations", async () => {

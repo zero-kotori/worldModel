@@ -56,8 +56,9 @@ function stanceCoverageToneClass(tone: ReturnType<typeof summarizeHypothesisStan
 }
 
 export default async function BeliefsPage({ searchParams }: PageProps) {
-  const data = await loadWorldModelData();
   const params = (await searchParams) ?? {};
+  const includeExternalBeliefs = firstParam(params.external) === "1";
+  const data = await loadWorldModelData({ includeExternalBeliefs });
   const referenceTime = new Date();
   const beliefCodes = createReadableCodes(data.beliefs, "B", (belief) => belief.createdAt);
   const hypothesisCodes = createReadableCodes(
@@ -105,6 +106,8 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
         ? reviewDueBeliefs
         : data.beliefs;
   const beliefSectionTitle = sourceObservationId ? "来源观察推荐" : reviewDueOnly ? "待复核假设" : "信念表";
+  const externalToggleHref = includeExternalBeliefs ? "/admin/world-model/beliefs" : "/admin/world-model/beliefs?external=1";
+  const externalToggleLabel = includeExternalBeliefs ? "隐藏外部" : "显示外部";
   const sourceObservationSeed = sourceObservation
     ? {
         title: sourceObservation.title,
@@ -121,6 +124,11 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
       <StatusNotice message={firstParam(params.error)} tone="error" />
       <div id="recommendations">
       <PageSection title={beliefSectionTitle}>
+        <div className="mb-3 flex justify-end">
+          <Link href={externalToggleHref} className="rounded-md border border-line bg-white px-3 py-2 text-sm font-semibold text-ink/70 hover:border-moss hover:text-moss">
+            {externalToggleLabel}
+          </Link>
+        </div>
         {visibleBeliefs.length === 0 ? (
           <EmptyState label={sourceObservationId ? "暂无来自该观察的推荐" : reviewDueOnly ? "暂无待复核假设" : "暂无信念"} />
         ) : (
@@ -143,6 +151,7 @@ export default async function BeliefsPage({ searchParams }: PageProps) {
                       </span>
                       <p className="text-xs text-ink/55">
                         {categoryLabels[belief.category]} · {probabilityModeLabels[belief.probabilityMode]} · {belief.status}
+                        {belief.origin === "EXTERNAL" ? " · 外部" : ""}
                       </p>
                       {stanceCoverage.tone !== "healthy" ? (
                         <p className={`mt-1 text-xs ${stanceCoverageToneClass(stanceCoverage.tone)}`}>{stanceCoverage.detail}</p>

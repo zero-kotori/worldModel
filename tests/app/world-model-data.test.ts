@@ -31,6 +31,19 @@ function worldModelServices() {
           category: "AI_TREND",
           description: "",
           probabilityMode: "INDEPENDENT",
+          origin: "INTERNAL",
+          status: "ACTIVE",
+          createdAt,
+          updatedAt: createdAt,
+          hypotheses: []
+        },
+        {
+          id: "belief_external",
+          title: "External submission",
+          category: "TECH_TREND",
+          description: "",
+          probabilityMode: "INDEPENDENT",
+          origin: "EXTERNAL",
           status: "ACTIVE",
           createdAt,
           updatedAt: createdAt,
@@ -90,6 +103,20 @@ describe("world model data loader", () => {
     expect(data.error).toBeNull();
     expect(listRuntime).toHaveBeenCalledWith();
     expect(restoreEnabled).not.toHaveBeenCalled();
+  });
+
+  it("hides external beliefs by default and includes them on request", async () => {
+    const services = worldModelServices();
+    const listRuntime = vi.fn().mockReturnValue([]);
+    mocks.getWorldModelServices.mockReturnValue(services);
+    mocks.getEvidenceLoopWorkerController.mockReturnValue({ listRuntime });
+    const { loadWorldModelData } = await import("@/app/admin/world-model/data");
+
+    const internalOnly = await loadWorldModelData();
+    const withExternal = await loadWorldModelData({ includeExternalBeliefs: true });
+
+    expect(internalOnly.beliefs.map((belief) => belief.title)).toEqual(["Automation resilience"]);
+    expect(withExternal.beliefs.map((belief) => belief.title)).toEqual(["Automation resilience", "External submission"]);
   });
 
   it("keeps page data available when LLM evaluation loading fails", async () => {

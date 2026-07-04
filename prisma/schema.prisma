@@ -26,6 +26,11 @@ enum BeliefStatus {
   ARCHIVED
 }
 
+enum BeliefOrigin {
+  INTERNAL
+  EXTERNAL
+}
+
 enum HypothesisStatus {
   ACTIVE
   PAUSED
@@ -116,6 +121,7 @@ model Belief {
   category        BeliefCategory
   description     String
   probabilityMode ProbabilityMode
+  origin          BeliefOrigin    @default(INTERNAL)
   status          BeliefStatus    @default(ACTIVE)
   hypotheses      Hypothesis[]
   updateEvents    BayesianUpdateEvent[]
@@ -123,6 +129,7 @@ model Belief {
   updatedAt       DateTime        @updatedAt
 
   @@index([category, status])
+  @@index([origin, status])
 }
 
 model Hypothesis {

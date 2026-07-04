@@ -34,6 +34,7 @@ function belief(): BeliefRecord {
     category: "AI_TREND",
     description: "Track agent adoption.",
     probabilityMode: "INDEPENDENT",
+    origin: "INTERNAL",
     status: "ACTIVE",
     createdAt,
     updatedAt: createdAt,

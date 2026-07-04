@@ -63,6 +63,7 @@ function belief(input: Partial<BeliefRecord> = {}): BeliefRecord {
     category: "AI_TREND",
     description: "",
     probabilityMode: "INDEPENDENT",
+    origin: "INTERNAL",
     status: "ACTIVE",
     createdAt,
     updatedAt: createdAt,

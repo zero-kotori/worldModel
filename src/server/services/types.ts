@@ -3,6 +3,7 @@ import type { ProbabilityMode, ProbabilitySnapshot, UpdatePreview } from "@/doma
 
 export type BeliefCategory = "AI_TREND" | "INVESTMENT" | "TECH_TREND" | "CAREER" | "SOURCE_RELIABILITY";
 export type BeliefStatus = "ACTIVE" | "PAUSED" | "ARCHIVED";
+export type BeliefOrigin = "INTERNAL" | "EXTERNAL";
 export type HypothesisStatus = "ACTIVE" | "PAUSED" | "RESOLVED_TRUE" | "RESOLVED_FALSE" | "ARCHIVED";
 export type HypothesisStance = "SUPPORTS" | "OPPOSES";
 export type ObservationSourceKind =
@@ -49,6 +50,7 @@ export type BeliefRecord = {
   category: BeliefCategory;
   description: string;
   probabilityMode: ProbabilityMode;
+  origin: BeliefOrigin;
   status: BeliefStatus;
   hypotheses: HypothesisRecord[];
   createdAt: Date;
@@ -360,6 +362,7 @@ export type CreateBeliefInput = {
   category: BeliefCategory;
   description: string;
   probabilityMode: ProbabilityMode;
+  origin?: BeliefOrigin;
   sourceObservationId?: string;
   hypotheses: CreateHypothesisInput[];
 };

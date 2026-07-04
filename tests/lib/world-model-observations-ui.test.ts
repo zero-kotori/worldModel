@@ -42,6 +42,7 @@ function belief(input: {
     category: "AI_TREND",
     description: "",
     probabilityMode: input.probabilityMode ?? "INDEPENDENT",
+    origin: "INTERNAL",
     status: "ACTIVE",
     createdAt,
     updatedAt: createdAt,

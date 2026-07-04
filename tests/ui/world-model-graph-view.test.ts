@@ -48,6 +48,7 @@ function belief(): BeliefRecord {
     category: "AI_TREND",
     description: "",
     probabilityMode: "INDEPENDENT",
+    origin: "INTERNAL",
     status: "ACTIVE",
     createdAt,
     updatedAt: createdAt,
