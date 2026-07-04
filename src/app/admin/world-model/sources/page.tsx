@@ -32,6 +32,7 @@ import {
 } from "@/lib/world-model-sources-ui";
 import { Field, SelectField, TextAreaField } from "@/components/world-model/Field";
 import { DataWarning, EmptyState, PageSection, StatusNotice } from "@/components/world-model/PageSection";
+import { PendingSubmitButton } from "@/components/world-model/PendingSubmitButton";
 
 export const dynamic = "force-dynamic";
 
@@ -450,9 +451,11 @@ export default async function SourcesPage({ searchParams }: PageProps) {
                 <input name="forceAutoApply" type="checkbox" /> 本次自动应用
               </label>
             ) : null}
-            <button className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white">
-              <Play size={16} /> 运行闭环
-            </button>
+            <PendingSubmitButton
+              idleLabel="运行闭环"
+              pendingLabel="运行中"
+              className="inline-flex min-h-9 items-center justify-center gap-2 rounded-md bg-moss px-3 text-sm font-semibold text-white"
+            />
           </form>
           <div id="automation-worker" className="mt-3 grid gap-3 rounded-md border border-line bg-white p-4 lg:grid-cols-[1fr_auto]">
             <form action={startEvidenceLoopWorkerAction} className="grid gap-3 lg:grid-cols-5">

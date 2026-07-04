@@ -562,6 +562,7 @@ describe("world model sources page", () => {
     expect(html).toContain('name="maxSources"');
     expect(html).toContain("单次最大查询");
     expect(html).toContain("单次最大来源");
+    expect(html).toContain('data-pending-label="运行中"');
   });
 
   it("uses the persisted source code when a run references a deleted source", async () => {
