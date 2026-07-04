@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import { Filter, Maximize2, X, ZoomIn, ZoomOut } from "lucide-react";
 import {
   applyNodeChanges,
   Background,
@@ -90,6 +90,12 @@ type PendingConnection = {
 type WorldModelGraphViewMode = "embedded" | "workspace";
 type WorldModelGraphInitialSelection = {
   nodeId?: string;
+};
+type GraphEdgeLookup = {
+  nodeIds: Set<string>;
+  nodeById: Map<string, WorldModelGraphNode>;
+  bySource: Map<string, WorldModelGraph["edges"]>;
+  byTarget: Map<string, WorldModelGraph["edges"]>;
 };
 
 function ReturnPathField({ returnPath }: { returnPath?: string }) {
@@ -210,6 +216,140 @@ function mergeSavedPositions(nodes: Node<FlowData>[]) {
 function savePositions(nodes: Node<FlowData>[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(graphLayoutStorageKey, JSON.stringify(serializeGraphLayout(nodes)));
+}
+
+function createGraphEdgeLookup(graph: WorldModelGraph): GraphEdgeLookup {
+  const bySource = new Map<string, WorldModelGraph["edges"]>();
+  const byTarget = new Map<string, WorldModelGraph["edges"]>();
+
+  for (const edge of graph.edges) {
+    bySource.set(edge.source, [...(bySource.get(edge.source) ?? []), edge]);
+    byTarget.set(edge.target, [...(byTarget.get(edge.target) ?? []), edge]);
+  }
+
+  return {
+    nodeIds: new Set(graph.nodes.map((node) => node.id)),
+    nodeById: new Map(graph.nodes.map((node) => [node.id, node])),
+    bySource,
+    byTarget
+  };
+}
+
+function addExistingNode(lookup: GraphEdgeLookup, selectedIds: Set<string>, nodeId: string) {
+  if (lookup.nodeIds.has(nodeId)) selectedIds.add(nodeId);
+}
+
+function outgoingEdges(lookup: GraphEdgeLookup, nodeId: string, relation: WorldModelGraph["edges"][number]["relation"]) {
+  return (lookup.bySource.get(nodeId) ?? []).filter((edge) => edge.relation === relation);
+}
+
+function incomingEdges(lookup: GraphEdgeLookup, nodeId: string, relation: WorldModelGraph["edges"][number]["relation"]) {
+  return (lookup.byTarget.get(nodeId) ?? []).filter((edge) => edge.relation === relation);
+}
+
+function addHypothesisContext(selectedIds: Set<string>, lookup: GraphEdgeLookup, hypothesisId: string) {
+  addExistingNode(lookup, selectedIds, hypothesisId);
+  for (const edge of incomingEdges(lookup, hypothesisId, "OWNS")) {
+    addExistingNode(lookup, selectedIds, edge.source);
+  }
+}
+
+function addObservationCore(selectedIds: Set<string>, lookup: GraphEdgeLookup, observationId: string) {
+  addExistingNode(lookup, selectedIds, observationId);
+  for (const edge of incomingEdges(lookup, observationId, "COLLECTED")) {
+    addExistingNode(lookup, selectedIds, edge.source);
+  }
+}
+
+function addUpdateContext(selectedIds: Set<string>, lookup: GraphEdgeLookup, updateId: string) {
+  addExistingNode(lookup, selectedIds, updateId);
+  for (const edge of outgoingEdges(lookup, updateId, "UPDATED")) {
+    addExistingNode(lookup, selectedIds, edge.target);
+  }
+  for (const edge of incomingEdges(lookup, updateId, "PRODUCED")) {
+    addEvidenceContext(selectedIds, lookup, edge.source, false);
+  }
+}
+
+function addEvidenceContext(selectedIds: Set<string>, lookup: GraphEdgeLookup, evidenceId: string, includeUpdates = true) {
+  addExistingNode(lookup, selectedIds, evidenceId);
+  for (const edge of incomingEdges(lookup, evidenceId, "CONFIRMED_AS")) {
+    addObservationCore(selectedIds, lookup, edge.source);
+  }
+  for (const edge of outgoingEdges(lookup, evidenceId, "INFLUENCES")) {
+    addHypothesisContext(selectedIds, lookup, edge.target);
+  }
+  if (includeUpdates) {
+    for (const edge of outgoingEdges(lookup, evidenceId, "PRODUCED")) {
+      addUpdateContext(selectedIds, lookup, edge.target);
+    }
+  }
+}
+
+function addObservationContext(selectedIds: Set<string>, lookup: GraphEdgeLookup, observationId: string) {
+  addObservationCore(selectedIds, lookup, observationId);
+  for (const relation of ["CANDIDATE", "SETTLED"] as const) {
+    for (const edge of outgoingEdges(lookup, observationId, relation)) {
+      addHypothesisContext(selectedIds, lookup, edge.target);
+    }
+  }
+  for (const edge of outgoingEdges(lookup, observationId, "CONFIRMED_AS")) {
+    addEvidenceContext(selectedIds, lookup, edge.target);
+  }
+}
+
+function addSourceContext(selectedIds: Set<string>, lookup: GraphEdgeLookup, sourceId: string) {
+  addExistingNode(lookup, selectedIds, sourceId);
+  for (const edge of outgoingEdges(lookup, sourceId, "COLLECTED")) {
+    addObservationContext(selectedIds, lookup, edge.target);
+  }
+}
+
+function createRelatedNodeIds(graph: WorldModelGraph, selectedNodeId: string) {
+  const lookup = createGraphEdgeLookup(graph);
+  const selectedNode = lookup.nodeById.get(selectedNodeId);
+  if (!selectedNode) return new Set(graph.nodes.map((node) => node.id));
+
+  const selectedIds = new Set<string>();
+  addExistingNode(lookup, selectedIds, selectedNode.id);
+
+  if (selectedNode.type === "belief") {
+    for (const edge of outgoingEdges(lookup, selectedNode.id, "OWNS")) {
+      addExistingNode(lookup, selectedIds, edge.target);
+    }
+    return selectedIds;
+  }
+
+  if (selectedNode.type === "hypothesis") {
+    addHypothesisContext(selectedIds, lookup, selectedNode.id);
+    for (const relation of ["CANDIDATE", "SETTLED"] as const) {
+      for (const edge of incomingEdges(lookup, selectedNode.id, relation)) {
+        addObservationCore(selectedIds, lookup, edge.source);
+      }
+    }
+    for (const edge of incomingEdges(lookup, selectedNode.id, "INFLUENCES")) {
+      addEvidenceContext(selectedIds, lookup, edge.source);
+    }
+    return selectedIds;
+  }
+
+  if (selectedNode.type === "observation") {
+    addObservationContext(selectedIds, lookup, selectedNode.id);
+    return selectedIds;
+  }
+
+  if (selectedNode.type === "evidence") {
+    addEvidenceContext(selectedIds, lookup, selectedNode.id);
+    return selectedIds;
+  }
+
+  if (selectedNode.type === "source") {
+    addSourceContext(selectedIds, lookup, selectedNode.id);
+    return selectedIds;
+  }
+
+  addUpdateContext(selectedIds, lookup, selectedNode.id);
+  return selectedIds;
 }
 
 function Field({
@@ -431,12 +571,12 @@ export function HypothesisEditor({
         options={Object.entries(hypothesisStanceLabels).map(([value, label]) => ({ value, label }))}
       />
       <div className="grid gap-2 sm:grid-cols-2">
-        <Field label="先验概率" name="priorProbability" type="number" step="0.01" min="0" max="1" defaultValue={hypothesis.priorProbability} />
+        <Field label="先验概率" name="priorProbability" type="number" step="any" min="0" max="1" defaultValue={hypothesis.priorProbability} />
         <Field
           label="当前概率"
           name="currentProbability"
           type="number"
-          step="0.01"
+          step="any"
           min="0"
           max="1"
           defaultValue={hypothesis.currentProbability}
@@ -1080,15 +1220,23 @@ export function ConnectionEditor({
 function NodeEditor({
   editor,
   selectedNode,
-  returnPath
+  returnPath,
+  filteredNodeId,
+  onFilterNode,
+  onClearFilter
 }: {
   editor: WorldModelGraphEditorData;
   selectedNode?: WorldModelGraphNode;
   returnPath?: string;
+  filteredNodeId?: string | null;
+  onFilterNode: (nodeId: string) => void;
+  onClearFilter: () => void;
 }) {
   if (!selectedNode) {
     return <div className="text-sm text-ink/55">未选择节点</div>;
   }
+
+  const isFilteredToSelected = filteredNodeId === selectedNode.id;
 
   return (
     <div className="grid gap-3">
@@ -1098,6 +1246,20 @@ function NodeEditor({
           {selectedNode.code} · {selectedNode.label}
         </h3>
       </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (isFilteredToSelected) {
+            onClearFilter();
+          } else {
+            onFilterNode(selectedNode.id);
+          }
+        }}
+        className="inline-flex min-h-9 w-fit items-center gap-2 rounded-md border border-line bg-white px-3 text-sm font-semibold text-ink hover:border-moss hover:text-moss"
+      >
+        {isFilteredToSelected ? <X size={16} /> : <Filter size={16} />}
+        {isFilteredToSelected ? "显示全部" : "只看相关"}
+      </button>
       {selectedNode.type === "source" ? <SourceEditor editor={editor} sourceId={selectedNode.id} returnPath={returnPath} /> : null}
       {selectedNode.type === "belief" ? <BeliefEditor editor={editor} beliefId={selectedNode.id} returnPath={returnPath} /> : null}
       {selectedNode.type === "hypothesis" ? <HypothesisEditor editor={editor} hypothesisId={selectedNode.id} returnPath={returnPath} /> : null}
@@ -1125,7 +1287,6 @@ export function WorldModelGraphView({
   const initialNodes = useMemo(() => createFlowNodes(graph.nodes, nodeIdMap), [graph.nodes, nodeIdMap]);
   const [nodes, setNodes] = useState<Node<FlowData>[]>(initialNodes);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FlowData>, Edge<FlowEdgeData>> | null>(null);
-  const edges = useMemo(() => createFlowEdges(graph.edges, nodeIdMap), [graph.edges, nodeIdMap]);
   const nodeByCode = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const graphNodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
   const graphEdgeById = useMemo(() => new Map(graph.edges.map((edge) => [edge.id, edge])), [graph.edges]);
@@ -1137,18 +1298,27 @@ export function WorldModelGraphView({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(initialSelectionNodeId);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null);
+  const [filteredNodeId, setFilteredNodeId] = useState<string | null>(null);
   const [embeddedPanActivated, setEmbeddedPanActivated] = useState(false);
+  const filteredNodeIds = useMemo(() => (filteredNodeId ? createRelatedNodeIds(graph, filteredNodeId) : null), [filteredNodeId, graph]);
+  const visibleGraphEdges = useMemo(
+    () => (filteredNodeIds ? graph.edges.filter((edge) => filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target)) : graph.edges),
+    [filteredNodeIds, graph.edges]
+  );
+  const edges = useMemo(() => createFlowEdges(visibleGraphEdges, nodeIdMap), [nodeIdMap, visibleGraphEdges]);
   const visibleNodes = useMemo<Node<FlowData>[]>(
     () =>
-      nodes.map((node) => {
-        const selected = node.data.domainId === selectedNodeId;
-        return {
-          ...node,
-          selected,
-          style: createGraphNodeVisualStyle(node.style ?? {}, selected)
-        };
-      }),
-    [nodes, selectedNodeId]
+      nodes
+        .filter((node) => !filteredNodeIds || filteredNodeIds.has(node.data.domainId))
+        .map((node) => {
+          const selected = node.data.domainId === selectedNodeId;
+          return {
+            ...node,
+            selected,
+            style: createGraphNodeVisualStyle(node.style ?? {}, selected)
+          };
+        }),
+    [filteredNodeIds, nodes, selectedNodeId]
   );
   const interactionOptions = useMemo(
     () => createGraphInteractionOptions({ mode, panActivated: embeddedPanActivated }),
@@ -1167,7 +1337,14 @@ export function WorldModelGraphView({
     setSelectedNodeId(initialSelectionNodeId);
     setSelectedEdgeId(null);
     setPendingConnection(null);
+    setFilteredNodeId(null);
   }, [initialSelectionNodeId]);
+
+  useEffect(() => {
+    if (filteredNodeId && !graphNodeById.has(filteredNodeId)) {
+      setFilteredNodeId(null);
+    }
+  }, [filteredNodeId, graphNodeById]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<FlowData>>[]) => {
@@ -1199,12 +1376,33 @@ export function WorldModelGraphView({
     [nodeByCode]
   );
 
+  const filterSelectedNode = useCallback(
+    (nodeId: string) => {
+      setFilteredNodeId(nodeId);
+      setSelectedNodeId(nodeId);
+      setSelectedEdgeId(null);
+      setPendingConnection(null);
+      window.requestAnimationFrame(() => {
+        void flowInstance?.fitView({ duration: 160 });
+      });
+    },
+    [flowInstance]
+  );
+
+  const clearNodeFilter = useCallback(() => {
+    setFilteredNodeId(null);
+    window.requestAnimationFrame(() => {
+      void flowInstance?.fitView({ duration: 160 });
+    });
+  }, [flowInstance]);
+
   if (graph.nodes.length === 0) {
     return <div className="rounded-md border border-dashed border-line bg-white px-4 py-6 text-sm text-ink/55">暂无图谱数据</div>;
   }
 
   const selectedNode = selectedNodeId ? graphNodeById.get(selectedNodeId) : undefined;
   const selectedEdge = selectedEdgeId ? graphEdgeById.get(selectedEdgeId) : undefined;
+  const filteredNode = filteredNodeId ? graphNodeById.get(filteredNodeId) : undefined;
   const canvasHeightClass = mode === "workspace" ? "h-[calc(100vh-150px)] min-h-[640px]" : "h-[clamp(640px,calc(100vh-120px),860px)]";
   const asideHeightClass = mode === "workspace" ? "h-[calc(100vh-150px)] min-h-[640px] overflow-y-auto" : "";
   const rootClass = mode === "workspace" ? "grid gap-3 lg:grid-cols-[minmax(0,1fr)_380px]" : "grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px]";
@@ -1264,11 +1462,30 @@ export function WorldModelGraphView({
             </GraphToolButton>
           </div>
         </div>
+        {filteredNode ? (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-moss/30 bg-moss/5 px-3 py-2 text-xs text-moss">
+            <span className="min-w-0">
+              只看相关 · {filteredNode.code} · {filteredNode.label}
+            </span>
+            <button type="button" className="shrink-0 whitespace-nowrap font-semibold hover:underline" onClick={clearNodeFilter}>
+              显示全部
+            </button>
+          </div>
+        ) : null}
         {editor && pendingConnection ? <ConnectionEditor editor={editor} connection={pendingConnection} returnPath={returnPath} /> : null}
         {editor && !pendingConnection && selectedEdge ? (
           <GraphEdgeEditor editor={editor} edge={selectedEdge} nodeById={graphNodeById} returnPath={returnPath} />
         ) : null}
-        {editor && !pendingConnection && !selectedEdge ? <NodeEditor editor={editor} selectedNode={selectedNode} returnPath={returnPath} /> : null}
+        {editor && !pendingConnection && !selectedEdge ? (
+          <NodeEditor
+            editor={editor}
+            selectedNode={selectedNode}
+            returnPath={returnPath}
+            filteredNodeId={filteredNodeId}
+            onFilterNode={filterSelectedNode}
+            onClearFilter={clearNodeFilter}
+          />
+        ) : null}
         {!editor ? <div className="text-sm text-ink/55">当前图谱未提供可编辑数据。</div> : null}
       </aside>
     </div>

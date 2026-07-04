@@ -382,6 +382,35 @@ describe("world model graph view", () => {
     expect(html).toContain("The rollout did not improve delivery throughput.");
   });
 
+  it("allows precise hypothesis probabilities when saving status changes", async () => {
+    const { HypothesisEditor } = await import("@/components/world-model/WorldModelGraphView");
+    const preciseBelief = belief();
+    preciseBelief.hypotheses = [
+      {
+        ...preciseBelief.hypotheses[0],
+        priorProbability: 0.6,
+        currentProbability: 0.8076923076923077
+      }
+    ];
+    const editor = createWorldModelGraphEditorData({
+      beliefs: [preciseBelief],
+      evidence: [],
+      updates: []
+    });
+
+    const html = renderToStaticMarkup(
+      React.createElement(HypothesisEditor, {
+        editor,
+        hypothesisId: "hypothesis_support",
+        returnPath: "/admin/world-model/graph?hypothesis=H-001"
+      })
+    );
+
+    expect(html).toMatch(/<input[^>]*step="any"[^>]*name="priorProbability"/);
+    expect(html).toMatch(/<input[^>]*step="any"[^>]*name="currentProbability"/);
+    expect(html).toContain('value="0.8076923076923077"');
+  });
+
   it("renders editable source configuration in the graph source editor", async () => {
     const { SourceEditor } = await import("@/components/world-model/WorldModelGraphView");
     const editor = createWorldModelGraphEditorData({
