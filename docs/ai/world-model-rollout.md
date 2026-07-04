@@ -46,6 +46,8 @@ WORLDMODEL_DATABASE_URL="postgresql://postgres:postgres@localhost:5433/worldmode
 
 The world-model schema is independent from `myWeb`; no world-model tables are added to the `myWeb` Prisma schema.
 
+Recent migrations include observation soft-delete and worker cleanup settings. After pulling a build that contains `20260704152000_add_observation_cleanup_modes`, run `npx prisma migrate deploy` before starting long-running workers so Prisma Client and the database agree on `ObservationStatus.DELETED` and the three cleanup columns on `AutomationWorkerConfig`.
+
 ## Access Path
 
 In proxy mode, direct unsigned requests to `worldModel` return `401`. The intended access path is:
@@ -91,6 +93,9 @@ npm run build
 - Unsupported social adapters remain dry-run stubs until a platform-specific credential profile is configured.
 - LLM and external deep-model estimators abstain when provider credentials or endpoints are missing.
 - Source evidence quality warnings are calibration hints. Review rejected evidence and rolled-back updates, then apply the suggested credibility and auto-confirm threshold from the source row when appropriate; v1 does not rewrite source configuration without that operator action.
+- Automated evidence loops default to rejecting duplicate candidates. Unknown observations and low-impact observations default to being kept for review, but the sources page and worker config can switch each group to `KEEP`, `REJECT`, or `DELETE`.
+- `DELETE` for observations is a soft-delete status. It hides queue noise and default graph nodes while preserving the database row for audit.
+- Query planning is conservative: manual `evidenceSearchQuery` wins, comparison-style hypotheses get benchmark/comparison/prediction-market queries, and uncovered cases fall back to a cleaned base query.
 - `npm run train:fetch -- --sources github,hugging_face --limit 20` refreshes only real platform samples for a faster LLM evaluation data update.
 - `npm run train:fetch -- --sources manifold --limit 20` refreshes resolved prediction-market samples for calibration-oriented LLM evaluation.
 - `npm run train:evaluate` evaluates 30 samples by default so the auto-apply readiness gate has enough evidence; pass `-- --limit 5` only for a quick smoke run.
